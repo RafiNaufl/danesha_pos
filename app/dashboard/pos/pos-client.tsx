@@ -257,7 +257,7 @@ function PosLayout({ data, session }: Props) {
 
               <div className="space-y-2">
                 {isAdmin && (
-                  <Link href="/products" className="flex items-center gap-3 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 transition min-h-[48px]">
+                  <Link href="/dashboard" className="flex items-center gap-3 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 transition min-h-[48px]">
                     <Settings className="text-neutral-500" size={20} />
                     <span className="font-medium">Backoffice Dashboard</span>
                   </Link>
