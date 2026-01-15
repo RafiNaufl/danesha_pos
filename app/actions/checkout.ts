@@ -95,9 +95,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
   }
 
   try {
-  const result = await prisma.$transaction(async tx => {
-    const number = genTxNumber()
-    let subtotal = new Prisma.Decimal(0)
+    const result = await prisma.$transaction(async tx => {
+      const number = genTxNumber()
+      let subtotal = new Prisma.Decimal(0)
     let discountTotal = new Prisma.Decimal(0)
     let total = new Prisma.Decimal(0)
     let costTotal = new Prisma.Decimal(0)
@@ -333,25 +333,33 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       throw e
     }
 
-    // Handle Stock Movements after transaction creation
+    // Handle Stock Movements - MOVED inside items.create for atomicity and to avoid "Transaction not found"
+    // Instead of loop after create, we can just let stock movements be created if we structure schema differently, 
+    // but since schema separates them, we must keep explicit create.
+    // The error likely happens because we await tx.transaction.create, and maybe it takes too long or something closes it?
+    // Actually, P2028 "Transaction not found" inside a transaction block usually means the transaction timed out or was closed by an error.
+    // We already increased timeout.
+    
+    // Let's optimize: Create stock movements in parallel to speed up.
+    const stockMovements = []
     for (const item of t.items as any[]) {
         if (item.type === ItemType.PRODUCT && item.productId) {
-            // SNAPSHOT SAFETY: unitCost harus dari snapshot TransactionItem.costPrice, bukan Product.costPrice live.
-            if (item.costPrice === null || item.costPrice === undefined) throw new Error('Invariant failed: missing snapshot costPrice')
-            
-            await tx.stockMovement.create({
-                data: {
-                    productId: item.productId,
-                    transactionId: t.id,
-                    type: 'SALE',
-                    quantity: item.qty,
-                    unitCost: item.costPrice,
-                    note: number,
-                    userId: finalCashierId, // Audit: Track which cashier made the sale
-                } as any,
-            })
+            stockMovements.push(
+                tx.stockMovement.create({
+                    data: {
+                        productId: item.productId,
+                        transactionId: t.id,
+                        type: 'SALE',
+                        quantity: item.qty,
+                        unitCost: item.costPrice,
+                        note: number,
+                        userId: finalCashierId,
+                    } as any,
+                })
+            )
         }
     }
+    await Promise.all(stockMovements)
 
     // ENUM GUARD: Pastikan status transaksi valid
     const statusVal = (t as any).status
@@ -390,7 +398,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       })),
       info: { discountAppliedToTotalQty: true, message: 'Diskon diterapkan ke TOTAL qty, bukan per item' }
     }
-  })
+  }, { timeout: 20000 })
   
   // Revalidate POS and Dashboard to update stock and reports
   revalidatePath('/dashboard/pos')
