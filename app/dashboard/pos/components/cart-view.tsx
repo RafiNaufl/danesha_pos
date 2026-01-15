@@ -118,7 +118,7 @@ export function CartView() {
         </div>
 
         {/* Footer Totals */}
-        <div className="p-4 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div className="p-4 pb-24 min-[769px]:pb-4 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
           <div className="space-y-2 mb-4 text-sm">
             <div className="flex justify-between text-gray-500">
               <span>Subtotal</span>

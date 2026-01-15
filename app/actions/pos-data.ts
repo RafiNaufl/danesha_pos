@@ -3,6 +3,8 @@
 import { prisma } from '@/app/lib/prisma'
 import { getAllProductStocks } from '@/app/actions/stock'
 
+// Force refresh
+// Force refresh
 export async function getPosData() {
   const [products, treatments, therapists, categories, stockMap] = await Promise.all([
     prisma.product.findMany({
@@ -31,8 +33,13 @@ export async function getPosData() {
     stock: stockMap.get(p.id) || 0,
     prices: p.prices.map(pr => ({ ...pr, price: pr.price.toNumber() })),
     discount: p.discount ? {
-      ...p.discount,
-      value: p.discount.value.toNumber()
+      id: p.discount.id,
+      name: p.discount.name,
+      type: p.discount.type,
+      value: p.discount.value.toNumber(),
+      startDate: p.discount.startDate,
+      endDate: p.discount.endDate,
+      isActive: p.discount.isActive
     } : null
   }))
 
@@ -41,8 +48,13 @@ export async function getPosData() {
     costPrice: t.costPrice.toNumber(),
     sellPrice: t.sellPrice.toNumber(),
     discount: t.discount ? {
-      ...t.discount,
-      value: t.discount.value.toNumber()
+      id: t.discount.id,
+      name: t.discount.name,
+      type: t.discount.type,
+      value: t.discount.value.toNumber(),
+      startDate: t.discount.startDate,
+      endDate: t.discount.endDate,
+      isActive: t.discount.isActive
     } : null
   }))
 
