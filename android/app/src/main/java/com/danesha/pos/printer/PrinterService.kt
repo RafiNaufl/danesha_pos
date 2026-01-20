@@ -15,8 +15,6 @@ import java.io.IOException
 import java.util.UUID
 import kotlin.jvm.JvmStatic
 
-import com.danesha.pos.BuildConfig
-
 /**
  * Service to handle Bluetooth ESC/POS printing.
  * Follows the Singleton pattern for easy access.
@@ -27,7 +25,7 @@ object PrinterService {
     private val SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     
     // Debug Flag (Toggle via code or remote config later)
-    private const val DEBUG = BuildConfig.DEBUG
+    private const val DEBUG = true // Hardcoded for now to fix build issues
 
     // Telemetry Data Class
     data class PrintStats(

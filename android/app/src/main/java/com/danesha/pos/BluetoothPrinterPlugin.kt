@@ -135,27 +135,27 @@ class BluetoothPrinterPlugin : Plugin() {
     }
 
     private fun parseReceiptData(json: JSObject): ReceiptData {
-        val storeName = json.getString("storeName") ?: "Store"
-        val storeAddress = json.getString("storeAddress") ?: ""
-        val transactionId = json.getString("transactionId") ?: ""
-        val date = json.getString("date") ?: ""
-        val cashierName = json.getString("cashierName") ?: ""
-        val subtotal = json.getDouble("subtotal") ?: 0.0
-        val tax = json.getDouble("tax") ?: 0.0
-        val total = json.getDouble("total") ?: 0.0
-        val footerMessage = json.getString("footerMessage") ?: ""
+        val storeName = json.optString("storeName", "Store")
+        val storeAddress = json.optString("storeAddress", "")
+        val transactionId = json.optString("transactionId", "")
+        val date = json.optString("date", "")
+        val cashierName = json.optString("cashierName", "")
+        val subtotal = json.optDouble("subtotal", 0.0)
+        val tax = json.optDouble("tax", 0.0)
+        val total = json.optDouble("total", 0.0)
+        val footerMessage = json.optString("footerMessage", "")
         
-        val itemsJson = json.getJSArray("items") ?: JSArray()
+        val itemsJson = json.optJSONArray("items") ?: org.json.JSONArray()
         val items = ArrayList<ReceiptItem>()
         
         for (i in 0 until itemsJson.length()) {
             val itemJson = itemsJson.getJSONObject(i)
             items.add(
                 ReceiptItem(
-                    name = itemJson.getString("name", "Item"),
-                    quantity = itemJson.getInt("quantity", 1),
-                    price = itemJson.getDouble("price", 0.0),
-                    total = itemJson.getDouble("total", 0.0)
+                    name = itemJson.optString("name", "Item"),
+                    quantity = itemJson.optInt("quantity", 1),
+                    price = itemJson.optDouble("price", 0.0),
+                    total = itemJson.optDouble("total", 0.0)
                 )
             )
         }
