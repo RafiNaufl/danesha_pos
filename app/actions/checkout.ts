@@ -168,7 +168,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         if (!product) throw new Error('Product not found')
         // GUARD: Product inactive → tidak bisa dijual
         if (!product.active) throw new Error(`Produk ${product.name} sudah tidak aktif`)
-        const unitPrice = await getProductUnitPrice(product.id, category.id)
+        const unitPrice = await getProductUnitPrice(product.id, category.id, tx)
         const discountType = it.discountType ?? null
         const discountValue = new Prisma.Decimal(it.discountValue ?? 0)
         if (discountValue.lessThan(0)) throw new Error('Invalid discount: negative')
@@ -220,7 +220,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
            if (!assistant || !assistant.active) throw new Error('Asisten sudah tidak aktif, silakan pilih ulang')
         }
 
-        const unitPrice = await getTreatmentPrice(treatment.id)
+        const unitPrice = await getTreatmentPrice(treatment.id, tx)
         const discountType = it.discountType ?? null
         const discountValue = new Prisma.Decimal(it.discountValue ?? 0)
         if (discountValue.lessThan(0)) throw new Error('Invalid discount: negative')
