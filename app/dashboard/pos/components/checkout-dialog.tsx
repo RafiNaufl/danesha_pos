@@ -5,6 +5,10 @@ import { usePos } from './pos-provider'
 import { X, Check, Printer, Loader2, Banknote, ArrowRightLeft, QrCode } from 'lucide-react'
 import { checkout } from '@/app/actions/checkout'
 import ReceiptPrint from '@/app/components/ReceiptPrint'
+import { printerService } from '@/lib/printer/bluetooth'
+import { generateReceipt } from '@/lib/printer/escpos'
+import { PrintableTransaction } from '@/lib/printer/types'
+import { useRef } from 'react'
 
 function formatMoney(amount: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount)
@@ -53,7 +57,7 @@ export function CheckoutDialog() {
           })),
         paymentMethod: finalPaymentMethod,
         paidAmount,
-        checkoutSessionId: crypto.randomUUID()
+        checkoutSessionId: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36)
       }
 
       // @ts-ignore
@@ -66,6 +70,37 @@ export function CheckoutDialog() {
       setLoading(false)
     }
   }
+
+  const handleBluetoothPrint = async (tx: any) => {
+    try {
+      const printableTx: PrintableTransaction = {
+        id: tx.id || '0',
+        number: tx.number,
+        createdAt: tx.createdAt,
+        cashierName: 'Staff', // TODO: Get from session
+        customerCategory: tx.categoryCode || 'General',
+        storeName: 'Danesha Clinic',
+        items: (tx.items || []).map((i: any) => ({
+          name: i.name,
+          qty: i.qty,
+          unitPrice: Number(i.unitPrice),
+          lineTotal: Number(i.lineTotal)
+        })),
+        subtotal: Number(tx.subtotal),
+        discountTotal: Number(tx.discountTotal),
+        total: Number(tx.total),
+        paymentMethod: paymentMethod,
+        paidAmount: paidAmount,
+        changeAmount: Number(tx.changeAmount)
+      };
+      
+      const buffer = generateReceipt(printableTx, printWidth === 58 ? 32 : 48);
+      await printerService.write(buffer);
+    } catch (e) {
+      console.error('Print failed', e);
+      alert('Failed to print via Bluetooth');
+    }
+  };
 
   const handleClose = () => {
     if (successTx) {
@@ -93,7 +128,16 @@ export function CheckoutDialog() {
 
           <div className="grid grid-cols-2 gap-3">
             <button 
-              onClick={() => window.print()} 
+              onClick={() => {
+                // Try bluetooth first, then window
+                printerService.isConnected().then(connected => {
+                    if (connected) {
+                        handleBluetoothPrint(successTx)
+                    } else {
+                        window.print()
+                    }
+                })
+              }} 
               className="flex items-center justify-center gap-2 h-12 rounded-xl border border-neutral-200 hover:bg-neutral-50 font-medium transition"
             >
               <Printer size={20} />

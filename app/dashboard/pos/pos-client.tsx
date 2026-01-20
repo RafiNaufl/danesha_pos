@@ -6,6 +6,7 @@ import { ProductGrid } from './components/product-grid'
 import { CartView } from './components/cart-view'
 import { MemberSearch } from './components/member-search'
 import { CheckoutDialog } from './components/checkout-dialog'
+import { PrinterConnect } from './components/printer-connect'
 import { Product, Treatment, Therapist, CustomerCategory, ProductPrice } from '@prisma/client'
 import { Search, ShoppingBag, User, X, Settings, LogOut, Home, Menu, LayoutGrid, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
@@ -79,6 +80,9 @@ function PosLayout({ data, session }: Props) {
         </div>
 
         <div className="flex items-center gap-3 ml-auto">
+          {/* Printer Connect */}
+          <PrinterConnect />
+          
           {/* Member Trigger */}
           <button 
             onClick={() => setShowMemberSearch(true)}

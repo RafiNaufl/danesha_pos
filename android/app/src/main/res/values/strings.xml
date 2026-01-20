@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">POS Danesha</string>
+    <string name="title_activity_main">POS Danesha</string>
+    <string name="package_name">com.danesha.pos</string>
+    <string name="custom_url_scheme">com.danesha.pos</string>
+</resources>

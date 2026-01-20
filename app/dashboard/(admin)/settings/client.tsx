@@ -1,12 +1,21 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Settings } from '@prisma/client'
-import { Save, Store, UserCog } from 'lucide-react'
+import { Save, Store, UserCog, Lock, Tablet } from 'lucide-react'
 import { updateSettings } from '@/app/actions/admin/settings'
 import { updateTherapistLevel } from '@/app/actions/admin/therapist-levels'
 import { cn } from '@/lib/utils'
+import { Capacitor, registerPlugin } from '@capacitor/core'
+
+interface KioskPlugin {
+  startLockTask(): Promise<void>;
+  stopLockTask(): Promise<void>;
+  isInLockTaskMode(): Promise<void>;
+}
+
+const KioskMode = registerPlugin<KioskPlugin>('KioskMode');
 
 type Level = {
   id: string
@@ -30,6 +39,27 @@ export function SettingsClient({ initialSettings, initialLevels }: Props) {
   })
   const [loading, setLoading] = useState(false)
   const [levels, setLevels] = useState(initialLevels)
+  const [isKioskMode, setIsKioskMode] = useState(false)
+
+  const toggleKioskMode = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      alert('Kiosk Mode hanya tersedia di aplikasi Android/iOS native')
+      return
+    }
+
+    try {
+      if (isKioskMode) {
+        await KioskMode.stopLockTask()
+        setIsKioskMode(false)
+      } else {
+        await KioskMode.startLockTask()
+        setIsKioskMode(true)
+      }
+    } catch (e: any) {
+      console.error('Kiosk toggle failed', e)
+      alert('Gagal mengubah mode kiosk: ' + e.message)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
      e.preventDefault()
@@ -119,6 +149,38 @@ export function SettingsClient({ initialSettings, initialLevels }: Props) {
             </button>
          </div>
       </form>
+
+      {/* Device Settings */}
+      <div className="mt-10 mb-10">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-orange-100 p-3 rounded-full text-orange-600">
+            <Tablet className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-bold">Pengaturan Perangkat</h2>
+        </div>
+        
+        <div className="bg-white p-6 rounded-xl shadow-sm border">
+           <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-900">Kiosk Mode (App Pinning)</h3>
+                <p className="text-sm text-gray-500 mt-1">Mengunci aplikasi agar tidak bisa keluar (Android Only).</p>
+              </div>
+              <button
+                type="button"
+                onClick={toggleKioskMode}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition",
+                  isKioskMode 
+                    ? "bg-red-100 text-red-700 hover:bg-red-200" 
+                    : "bg-green-100 text-green-700 hover:bg-green-200"
+                )}
+              >
+                <Lock size={16} />
+                {isKioskMode ? 'Nonaktifkan Kiosk' : 'Aktifkan Kiosk'}
+              </button>
+           </div>
+        </div>
+      </div>
 
       <div className="mt-10">
         <div className="flex items-center gap-3 mb-6">
