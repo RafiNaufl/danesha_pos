@@ -1,0 +1,168 @@
+package com.danesha.pos
+
+import com.danesha.pos.printer.PrinterService
+import com.danesha.pos.printer.ReceiptData
+import com.danesha.pos.printer.ReceiptItem
+import com.getcapacitor.JSArray
+import com.getcapacitor.JSObject
+import com.getcapacitor.Plugin
+import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.CapacitorPlugin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import android.content.Context
+import android.content.SharedPreferences
+
+import java.util.concurrent.atomic.AtomicBoolean
+
+@CapacitorPlugin(name = "BluetoothPrinter")
+class BluetoothPrinterPlugin : Plugin() {
+
+    // Duplicate Print Protection (Lock)
+    private val isPrinting = AtomicBoolean(false)
+    private val PREFS_NAME = "BluetoothPrinterPrefs"
+    private val KEY_LAST_TXN = "last_printed_txn"
+
+    @PluginMethod
+    fun print(call: PluginCall) {
+        val macAddress = call.getString("macAddress")
+        val data = call.getObject("data")
+
+        if (macAddress == null) {
+            val ret = JSObject()
+            ret.put("status", "FAILED")
+            ret.put("message", "MAC Address is required")
+            ret.put("printerConnected", false)
+            ret.put("canRetry", false) // User error, no need to retry
+            call.resolve(ret)
+            return
+        }
+
+        if (data == null) {
+            val ret = JSObject()
+            ret.put("status", "FAILED")
+            ret.put("message", "Receipt Data is required")
+            ret.put("printerConnected", false)
+            ret.put("canRetry", false) // User error
+            call.resolve(ret)
+            return
+        }
+        
+        // 1. Idempotency Check (Enterprise Feature)
+        // Prevent duplicate printing of the same transaction ID
+        val transactionId = data.getString("transactionId")
+        if (!transactionId.isNullOrEmpty()) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val lastTxn = prefs.getString(KEY_LAST_TXN, "")
+            if (lastTxn == transactionId) {
+                val ret = JSObject()
+                ret.put("status", "BUSY") // Using BUSY as per instruction to indicate "already done/skipped"
+                ret.put("message", "Struk sudah dicetak sebelumnya (Idempotency Guard)")
+                ret.put("printerConnected", true)
+                ret.put("canRetry", false) // Idempotency: Do NOT retry
+                call.resolve(ret)
+                return
+            }
+        }
+        
+        // Check Lock
+        if (!isPrinting.compareAndSet(false, true)) {
+             val ret = JSObject()
+             ret.put("status", "BUSY")
+             ret.put("message", "Printer sedang digunakan")
+             ret.put("printerConnected", true)
+             ret.put("canRetry", true) // Just busy, can retry manually
+             call.resolve(ret)
+             return
+        }
+
+        // Parse Data
+        try {
+            val receiptData = parseReceiptData(data)
+            
+            // Run in background
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val stats = PrinterService.printReceipt(context, macAddress, receiptData)
+                    
+                    // Save Transaction ID on Success
+                    if (!transactionId.isNullOrEmpty()) {
+                        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        prefs.edit().putString(KEY_LAST_TXN, transactionId).apply()
+                    }
+                    
+                    val ret = JSObject()
+                    ret.put("status", "SUCCESS")
+                    ret.put("message", "Print berhasil")
+                    ret.put("printerConnected", true)
+                    ret.put("canRetry", false)
+                    
+                    val telemetry = JSObject()
+                    telemetry.put("connectTime", stats.connectTimeMs)
+                    telemetry.put("printTime", stats.printTimeMs)
+                    telemetry.put("bytes", stats.totalBytes)
+                    ret.put("telemetry", telemetry)
+                    
+                    bridge.executeOnMainThread {
+                        call.resolve(ret)
+                    }
+                } catch (e: Exception) {
+                    val ret = JSObject()
+                    ret.put("status", "FAILED")
+                    ret.put("message", e.message ?: "Unknown error")
+                    ret.put("printerConnected", false)
+                    ret.put("canRetry", true) // Failed connection/timeout, can retry
+                    
+                    bridge.executeOnMainThread {
+                        call.resolve(ret)
+                    }
+                } finally {
+                    // Release Lock
+                    isPrinting.set(false)
+                }
+            }
+        } catch (e: Exception) {
+            isPrinting.set(false) // Ensure lock is released if parse fails
+            val ret = JSObject()
+            ret.put("status", "FAILED")
+            ret.put("message", "Invalid data format: ${e.message}")
+            ret.put("printerConnected", false)
+            ret.put("canRetry", false) // Data error
+            call.resolve(ret)
+        }
+    }
+
+    private fun parseReceiptData(json: JSObject): ReceiptData {
+        val storeName = json.getString("storeName") ?: "Store"
+        val storeAddress = json.getString("storeAddress") ?: ""
+        val transactionId = json.getString("transactionId") ?: ""
+        val date = json.getString("date") ?: ""
+        val cashierName = json.getString("cashierName") ?: ""
+        val subtotal = json.getDouble("subtotal") ?: 0.0
+        val tax = json.getDouble("tax") ?: 0.0
+        val total = json.getDouble("total") ?: 0.0
+        val footerMessage = json.getString("footerMessage") ?: ""
+        
+        val itemsJson = json.getJSArray("items") ?: JSArray()
+        val items = ArrayList<ReceiptItem>()
+        
+        for (i in 0 until itemsJson.length()) {
+            val itemJson = itemsJson.getJSONObject(i)
+            items.add(
+                ReceiptItem(
+                    name = itemJson.getString("name", "Item"),
+                    quantity = itemJson.getInt("quantity", 1),
+                    price = itemJson.getDouble("price", 0.0),
+                    total = itemJson.getDouble("total", 0.0)
+                )
+            )
+        }
+
+        return ReceiptData(
+            storeName, storeAddress, transactionId, date, cashierName,
+            items, subtotal, tax, total, footerMessage
+        )
+    }
+}

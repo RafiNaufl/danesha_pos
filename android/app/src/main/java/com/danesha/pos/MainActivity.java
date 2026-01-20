@@ -21,6 +21,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(KioskPlugin.class);
+        registerPlugin(BluetoothPrinterPlugin.class);
         super.onCreate(savedInstanceState);
         checkAndRequestBluetoothPermissions();
     }

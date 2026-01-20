@@ -9,6 +9,7 @@ import { printerService } from '@/lib/printer/bluetooth'
 import { generateReceipt } from '@/lib/printer/escpos'
 import { PrintableTransaction } from '@/lib/printer/types'
 import { useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 
 function formatMoney(amount: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount)
@@ -109,6 +110,30 @@ export function CheckoutDialog() {
     dispatch({ type: 'TOGGLE_CHECKOUT', payload: false })
   }
 
+  const [isPrinting, setIsPrinting] = useState(false)
+
+  const handlePrint = async () => {
+    setIsPrinting(true)
+    try {
+      const isConnected = await printerService.isConnected()
+      
+      if (isConnected) {
+        await handleBluetoothPrint(successTx)
+      } else {
+        if (Capacitor.isNativePlatform()) {
+          alert('Printer belum terhubung. Silakan hubungkan printer melalui tombol printer di pojok kanan atas.')
+        } else {
+          window.print()
+        }
+      }
+    } catch (e) {
+      console.error('Print check failed', e)
+      alert('Gagal memproses permintaan cetak')
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
   if (!state.isCheckoutOpen) return null
 
   if (successTx) {
@@ -128,26 +153,18 @@ export function CheckoutDialog() {
 
           <div className="grid grid-cols-2 gap-3">
             <button 
-              onClick={() => {
-                // Try bluetooth first, then window
-                printerService.isConnected().then(connected => {
-                    if (connected) {
-                        handleBluetoothPrint(successTx)
-                    } else {
-                        window.print()
-                    }
-                })
-              }} 
-              className="flex items-center justify-center gap-2 h-12 rounded-xl border border-neutral-200 hover:bg-neutral-50 font-medium transition"
+              onClick={handlePrint} 
+              disabled={isPrinting}
+              className="flex items-center justify-center gap-2 h-12 rounded-xl border border-neutral-200 hover:bg-neutral-50 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Printer size={20} />
-              Print Receipt
+              {isPrinting ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />}
+              {isPrinting ? 'Mencetak...' : 'Cetak Struk'}
             </button>
             <button 
               onClick={handleClose} 
               className="h-12 rounded-xl bg-black text-white font-bold hover:bg-neutral-800 transition"
             >
-              New Transaction
+              Transaksi Baru
             </button>
           </div>
 
