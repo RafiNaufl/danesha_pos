@@ -13,18 +13,8 @@ export async function getDashboardSummary() {
   const startOfLastMonth = startOfMonth(subMonths(now, 1))
   const endOfLastMonth = endOfMonth(subMonths(now, 1))
 
-  // 1. Key Metrics
-  const [
-    totalRevenue,
-    lastMonthRevenue,
-    totalTransactions,
-    lastMonthTransactions,
-    totalMembers,
-    newMembersThisMonth,
-    recentTransactions,
-    expiringDiscounts,
-    monthlyRevenueGraph
-  ] = await Promise.all([
+  // 1. Key Metrics - Split into smaller concurrent chunks to avoid connection timeout
+  const metrics1 = await Promise.all([
     // Current Month Revenue
     prisma.transaction.aggregate({
       where: {
@@ -45,6 +35,9 @@ export async function getDashboardSummary() {
         createdAt: { gte: startOfCurrentMonth, lte: endOfCurrentMonth }
       }
     }),
+  ])
+
+  const metrics2 = await Promise.all([
     // Last Month Transactions Count
     prisma.transaction.count({
       where: {
@@ -59,6 +52,9 @@ export async function getDashboardSummary() {
         joinDate: { gte: startOfCurrentMonth }
       }
     }),
+  ])
+
+  const metrics3 = await Promise.all([
     // Recent Activity (Transactions)
     prisma.transaction.findMany({
       take: 5,
@@ -78,18 +74,12 @@ export async function getDashboardSummary() {
         isActive: true
       },
       take: 5
-    }),
-    // Graph Data (Daily Revenue for current month)
-    prisma.transaction.groupBy({
-      by: ['createdAt'],
-      where: {
-        createdAt: { gte: subDays(now, 30) } // Last 30 days
-      },
-      _sum: {
-        total: true
-      }
     })
   ])
+
+  const [totalRevenue, lastMonthRevenue, totalTransactions] = metrics1
+  const [lastMonthTransactions, totalMembers, newMembersThisMonth] = metrics2
+  const [recentTransactions, expiringDiscounts] = metrics3
 
   // Process Graph Data
   // Prisma groupBy on DateTime is precise to the millisecond/second. 
