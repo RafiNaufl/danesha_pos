@@ -13,6 +13,7 @@ function formatMoney(amount: number) {
 export function CheckoutDialog() {
   const { state, dispatch, totals } = usePos()
   const [paymentMethod, setPaymentMethod] = useState('')
+  const [selectedBank, setSelectedBank] = useState('')
   const [paidAmount, setPaidAmount] = useState<number>(0)
   const [loading, setLoading] = useState(false)
   const [successTx, setSuccessTx] = useState<any>(null)
@@ -20,12 +21,13 @@ export function CheckoutDialog() {
   
   // Calculate change
   const change = Math.max(0, paidAmount - totals.total)
-  const canPay = paidAmount >= totals.total && paymentMethod !== ''
+  const canPay = paidAmount >= totals.total && paymentMethod !== '' && (paymentMethod !== 'TRANSFER' || selectedBank !== '')
 
   // Reset state when opening
   useEffect(() => {
     if (state.isCheckoutOpen) {
       setPaymentMethod('')
+      setSelectedBank('')
       setPaidAmount(0)
       setSuccessTx(null)
     }
@@ -35,19 +37,21 @@ export function CheckoutDialog() {
     if (!canPay) return
     setLoading(true)
     try {
+      const finalPaymentMethod = paymentMethod === 'TRANSFER' ? `TRANSFER - ${selectedBank}` : paymentMethod
       const input = {
         memberCode: state.member?.memberCode,
         categoryCode: state.category?.code,
         items: state.items.map(i => ({
-          type: i.type,
-          productId: i.productId,
-          treatmentId: i.treatmentId,
-          therapistId: i.therapistId,
-          qty: i.qty,
-          discountType: i.discountType,
-          discountValue: i.discountValue
-        })),
-        paymentMethod,
+            type: i.type,
+            productId: i.productId,
+            treatmentId: i.treatmentId,
+            therapistId: i.therapistId,
+            assistantId: i.assistantId,
+            qty: i.qty,
+            discountType: i.discountType,
+            discountValue: i.discountValue
+          })),
+        paymentMethod: finalPaymentMethod,
         paidAmount,
         checkoutSessionId: crypto.randomUUID()
       }
@@ -126,7 +130,7 @@ export function CheckoutDialog() {
                  unitPrice: formatMoney(Number(i.unitPrice)),
                  finalLine: formatMoney(Number(i.lineTotal)),
                  discountLabel: i.discountType ? (i.discountType === 'PERCENT' ? `${Number(i.discountValue)}%` : `${formatMoney(Number(i.discountValue))}`) : undefined,
-                 therapistName: i.therapistName || undefined
+                 therapistName: i.therapistName ? (i.assistantName ? `${i.therapistName} & ${i.assistantName}` : i.therapistName) : undefined
                }))}
                totals={{
                  subtotal: formatMoney(Number(successTx.subtotal)),
@@ -168,7 +172,10 @@ export function CheckoutDialog() {
               ].map(m => (
                 <button
                   key={m.id}
-                  onClick={() => setPaymentMethod(m.id)}
+                  onClick={() => {
+                    setPaymentMethod(m.id)
+                    if (m.id !== 'TRANSFER') setSelectedBank('')
+                  }}
                   className={`h-20 rounded-xl border-2 font-semibold transition flex flex-col items-center justify-center gap-2 ${
                     paymentMethod === m.id
                       ? 'border-primary bg-primary/10 text-primary' 
@@ -180,6 +187,28 @@ export function CheckoutDialog() {
                 </button>
               ))}
             </div>
+
+            {/* Bank Selection */}
+            {paymentMethod === 'TRANSFER' && (
+              <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-3 block">Select Bank</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {['BCA', 'Mandiri', 'BRI', 'Shopee'].map(bank => (
+                    <button
+                      key={bank}
+                      onClick={() => setSelectedBank(bank)}
+                      className={`h-12 rounded-xl border-2 font-medium transition ${
+                        selectedBank === bank
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-neutral-100 bg-white text-gray-600 hover:border-neutral-200'
+                      }`}
+                    >
+                      {bank}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Paid Amount */}

@@ -64,6 +64,7 @@ export type ProductReport = {
 }
 
 export async function getProductReport(filters: ReportFilters): Promise<ProductReport> {
+  // REPORTING GUARD — read-only, snapshot-based
   // INVARIANT: Product report hanya membaca snapshot TransactionItem, tidak membaca Product.costPrice live
   // Reports rely on immutable transaction snapshots (audit-safe)
   // Strict separation: This report ignores therapistId to avoid mixing modes
@@ -235,6 +236,22 @@ export async function getTherapistPerformanceReport(filters: ReportFilters): Pro
     }
   })
 
+  // 1b. Group By Assistant (Snapshot Data: Qty only)
+  // Assistant gets credit for "Treatment Count" but usually Omzet is attributed to Main Therapist.
+  // We will count how many times they assisted.
+  const assistantGroups = await prisma.transactionItem.groupBy({
+    by: ['assistantId'],
+    where: {
+      transaction: whereTxTreatment,
+      type: 'TREATMENT',
+      assistantId: { not: null },
+      ...(therapistFilter ? { assistantId: therapistFilter } : {})
+    },
+    _sum: {
+      qty: true
+    }
+  })
+
   // 2. Commission Aggregates (Snapshot Data: Amount)
   const commissionGroups = await prisma.therapistCommission.groupBy({
     by: ['therapistId'],
@@ -251,9 +268,10 @@ export async function getTherapistPerformanceReport(filters: ReportFilters): Pro
   })
 
   // 3. Resolve Therapist Names (Display Only)
-  // Collect all therapist IDs found in items OR commissions
+  // Collect all therapist IDs found in items OR commissions OR assistant roles
   const therapistIds = Array.from(new Set([
     ...itemGroups.map(g => g.therapistId).filter(Boolean) as string[],
+    ...assistantGroups.map(g => g.assistantId).filter(Boolean) as string[],
     ...commissionGroups.map(g => g.therapistId).filter(Boolean) as string[]
   ]))
 
@@ -266,14 +284,23 @@ export async function getTherapistPerformanceReport(filters: ReportFilters): Pro
   // 4. Build Performance Items
   const performanceItems: TherapistPerformanceItem[] = therapistIds.map(tid => {
     const itemStats = itemGroups.find(g => g.therapistId === tid)
+    const assistantStats = assistantGroups.find(g => g.assistantId === tid)
     const commStats = commissionGroups.find(g => g.therapistId === tid)
 
     const omzet = normalizeDecimal(itemStats?._sum.lineTotal)
-    const treatmentCount = itemStats?._sum.qty || 0 // Usually 1 per item, but summing qty is safer
+    // Treatment Count = Main + Assistant roles
+    const mainCount = itemStats?._sum.qty || 0
+    const assistantCount = assistantStats?._sum.qty || 0
+    const treatmentCount = mainCount + assistantCount
+    
     const commission = normalizeDecimal(commStats?._sum.amount)
     
-    // Rata-rata omzet per treatment
-    const avgOmzet = treatmentCount > 0 ? normalizeDecimal(omzet / treatmentCount) : 0
+    // Rata-rata omzet per treatment (based on Main Treatment Count only, to avoid diluting with assistant roles which have 0 omzet)
+    // Or should it be based on total? Usually Avg Omzet is a metric for "Revenue Generation Efficiency".
+    // If I assist, I generate 0 revenue directly (attributed to me).
+    // So maybe keep it as omzet / mainCount. 
+    // If I only assist, my Avg Omzet is 0. This seems correct.
+    const avgOmzet = mainCount > 0 ? normalizeDecimal(omzet / mainCount) : 0
 
     return {
       therapistId: tid,
@@ -306,6 +333,7 @@ export async function getTherapistPerformanceReport(filters: ReportFilters): Pro
 }
 
 export async function getFinancialReport(filters: ReportFilters) {
+  // REPORTING GUARD — read-only, snapshot-based
   // INVARIANT: Report hanya membaca snapshot (TransactionItem, TherapistCommission), tidak hitung ulang harga/komisi.
   // Reports must rely on immutable transaction snapshots (audit-safe)
   // DILARANG: Join ke Product, Treatment, ProductPrice, Settings untuk kalkulasi.
@@ -371,6 +399,8 @@ export async function getFinancialReport(filters: ReportFilters) {
       omzet: number, 
       commission: number, 
       treatmentCount: number, 
+      mainCount: number,
+      assistantCount: number,
       avgOmzet: number 
     }[]
   }
@@ -386,7 +416,8 @@ export async function getFinancialReport(filters: ReportFilters) {
     // We strictly calculate stats based on items handled by this therapist
     
     // 1. Aggregates from TransactionItem (SNAPSHOT ONLY)
-    const itemGroups = await prisma.transactionItem.groupBy({
+    // MAIN ROLE: Omzet + Qty
+    const mainGroups = await prisma.transactionItem.groupBy({
       by: ['type'],
       where: {
         transaction: whereTxProduct,
@@ -400,18 +431,35 @@ export async function getFinancialReport(filters: ReportFilters) {
       }
     })
 
-    const productGroup = itemGroups.find(g => g.type === 'PRODUCT')
-    const treatmentGroup = itemGroups.find(g => g.type === 'TREATMENT')
+    // ASSISTANT ROLE: Qty Only (Omzet attributed to Main)
+    const assistantGroups = await prisma.transactionItem.groupBy({
+      by: ['type'],
+      where: {
+        transaction: whereTxProduct,
+        assistantId: filters.therapistId,
+        type: 'TREATMENT' // Assistant only relevant for treatment
+      },
+      _sum: {
+        qty: true
+      }
+    })
 
-    const omzet = normalizeDecimal(itemGroups.reduce((sum, g) => sum + Number(g._sum.lineTotal || 0), 0))
+    const productGroup = mainGroups.find(g => g.type === 'PRODUCT')
+    const treatmentGroup = mainGroups.find(g => g.type === 'TREATMENT')
+    const assistantTreatmentGroup = assistantGroups.find(g => g.type === 'TREATMENT')
+
+    const omzet = normalizeDecimal(mainGroups.reduce((sum, g) => sum + Number(g._sum.lineTotal || 0), 0))
     const diskonProduct = normalizeDecimal(productGroup?._sum.lineDiscount)
     const diskonTreatment = normalizeDecimal(treatmentGroup?._sum.lineDiscount)
     const diskon = normalizeDecimal(diskonProduct + diskonTreatment)
     
-    const laba = normalizeDecimal(itemGroups.reduce((sum, g) => sum + Number(g._sum.profit || 0), 0))
+    const laba = normalizeDecimal(mainGroups.reduce((sum, g) => sum + Number(g._sum.profit || 0), 0))
     const modal = normalizeDecimal(omzet - laba) // Derived Cost
-    const treatmentCount = itemGroups.reduce((sum, g) => sum + (g._sum.qty || 0), 0)
-    const avgOmzet = treatmentCount > 0 ? normalizeDecimal(omzet / treatmentCount) : 0
+    
+    const mainCount = mainGroups.reduce((sum, g) => sum + (g._sum.qty || 0), 0)
+    const assistantCount = assistantTreatmentGroup?._sum.qty || 0
+    const treatmentCount = mainCount + assistantCount
+    const avgOmzet = mainCount > 0 ? normalizeDecimal(omzet / mainCount) : 0 // Avg based on Main only
 
     // 2. Commission from TherapistCommission (SNAPSHOT ONLY)
     const commissionStats = await prisma.therapistCommission.aggregate({
@@ -441,6 +489,8 @@ export async function getFinancialReport(filters: ReportFilters) {
         therapistName: therapist?.name || 'Unknown',
         omzet: omzet,
         treatmentCount,
+        mainCount,
+        assistantCount,
         commission: komisi,
         avgOmzet
       }]
@@ -451,10 +501,16 @@ export async function getFinancialReport(filters: ReportFilters) {
        prisma.transactionItem.findMany({
          where: {
            transaction: whereTxProduct,
-           therapistId: filters.therapistId
+           OR: [
+             { therapistId: filters.therapistId },
+             { assistantId: filters.therapistId }
+           ]
          },
          include: {
-           transaction: true // Allowed: Transaction is a snapshot container
+           transaction: true, // Allowed: Transaction is a snapshot container
+           commission: {
+             where: { therapistId: filters.therapistId }
+           }
          },
          orderBy: { transaction: { createdAt: 'desc' } },
          skip,
@@ -463,7 +519,10 @@ export async function getFinancialReport(filters: ReportFilters) {
        prisma.transactionItem.count({
          where: {
            transaction: whereTxProduct,
-           therapistId: filters.therapistId
+           OR: [
+             { therapistId: filters.therapistId },
+             { assistantId: filters.therapistId }
+           ]
          }
        })
     ])
@@ -474,7 +533,10 @@ export async function getFinancialReport(filters: ReportFilters) {
     const treatmentIds = items.map(i => i.treatmentId).filter(Boolean) as string[]
     const memberIds = items.map(i => i.transaction.memberId).filter(Boolean) as string[]
     const categoryIds = items.map(i => i.transaction.categoryId).filter(Boolean) as string[]
-    const therapistIds = items.map(i => i.therapistId).filter(Boolean) as string[]
+    const therapistIds = Array.from(new Set([
+      ...items.map(i => i.therapistId).filter(Boolean) as string[],
+      ...items.map(i => i.assistantId).filter(Boolean) as string[]
+    ]))
 
     const [products, treatments, members, categories, therapists] = await prisma.$transaction([
       prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true } }),
@@ -500,10 +562,14 @@ export async function getFinancialReport(filters: ReportFilters) {
                 'Unknown Item',
       qty: item.qty,
       price: normalizeDecimal(item.lineTotal), 
-      commission: 0, 
+      commission: normalizeDecimal(item.commission?.[0]?.amount), 
       member: (item.transaction.memberId ? memberMap.get(item.transaction.memberId) : null) || '-',
       category: categoryMap.get(item.transaction.categoryId) || 'Unknown',
-      therapists: (item.therapistId ? therapistMap.get(item.therapistId) : null) || '-'
+      therapists: [
+        item.therapistId ? therapistMap.get(item.therapistId) : null,
+        item.assistantId ? `(Asst: ${therapistMap.get(item.assistantId)})` : null
+      ].filter(Boolean).join(' ') || '-',
+      paymentMethod: item.transaction.paymentMethod
     }))
 
   } else {
@@ -657,6 +723,13 @@ export async function getFinancialReport(filters: ReportFilters) {
       _sum: { lineTotal: true, qty: true }
     })
 
+    // 3a. Assistant Breakdown (Qty Only)
+    const assistantGroup = await prisma.transactionItem.groupBy({
+      by: ['assistantId'],
+      where: { type: 'TREATMENT', transaction: whereTxTreatment, assistantId: { not: null } },
+      _sum: { qty: true }
+    })
+
     // 3b. Commission Breakdown (Snapshot)
     const commissionGroup = await prisma.therapistCommission.groupBy({
       by: ['therapistId'],
@@ -671,6 +744,7 @@ export async function getFinancialReport(filters: ReportFilters) {
     // Combine IDs from both groups to ensure full coverage
     const txTherapistIds = new Set([
       ...treatmentGroup.map(tg => tg.therapistId),
+      ...assistantGroup.map(ag => ag.assistantId),
       ...commissionGroup.map(cg => cg.therapistId)
     ].filter(Boolean) as string[])
 
@@ -700,9 +774,13 @@ export async function getFinancialReport(filters: ReportFilters) {
     const mergedTherapistStats = Array.from(displayTherapistsMap.values()).map(th => {
       const tid = th.id
       const tg = treatmentGroup.find(g => g.therapistId === tid)
+      const ag = assistantGroup.find(g => g.assistantId === tid)
       const cg = commissionGroup.find(g => g.therapistId === tid)
 
-      const treatmentCount = tg?._sum.qty || 0
+      const mainCount = tg?._sum.qty || 0
+      const asstCount = ag?._sum.qty || 0
+      const treatmentCount = mainCount + asstCount
+
       const omzet = normalizeDecimal(tg?._sum.lineTotal)
       const commission = normalizeDecimal(cg?._sum.amount)
 
@@ -712,7 +790,9 @@ export async function getFinancialReport(filters: ReportFilters) {
         omzet,
         commission, 
         treatmentCount,
-        avgOmzet: treatmentCount > 0 ? normalizeDecimal(omzet / treatmentCount) : 0
+        mainCount,
+        assistantCount: asstCount,
+        avgOmzet: mainCount > 0 ? normalizeDecimal(omzet / mainCount) : 0
       }
     }).sort((a, b) => b.omzet - a.omzet)
 
@@ -728,7 +808,11 @@ export async function getFinancialReport(filters: ReportFilters) {
       prisma.transaction.findMany({
         where: whereTxProduct,
         include: {
-          items: true 
+          items: {
+            include: {
+              commission: true
+            }
+          }
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -742,7 +826,10 @@ export async function getFinancialReport(filters: ReportFilters) {
     const memberIds = transactions.map(t => t.memberId).filter(Boolean) as string[]
     const txCategoryIds = transactions.map(t => t.categoryId).filter(Boolean) as string[]
     const allItems = transactions.flatMap(t => t.items)
-    const paginatedTxTherapistIds = allItems.map(i => i.therapistId).filter(Boolean) as string[]
+    const paginatedTxTherapistIds = Array.from(new Set([
+      ...allItems.map(i => i.therapistId).filter(Boolean) as string[],
+      ...allItems.map(i => i.assistantId).filter(Boolean) as string[]
+    ]))
     const txProductIds = allItems.map(i => i.productId).filter(Boolean) as string[]
     const txTreatmentIds = allItems.map(i => i.treatmentId).filter(Boolean) as string[]
 
@@ -760,7 +847,21 @@ export async function getFinancialReport(filters: ReportFilters) {
     const txProductMap = new Map(txProducts.map(p => [p.id, p.name]))
     const txTreatmentMap = new Map(txTreatments.map(t => [t.id, t.name]))
 
-    data = transactions.map(tx => ({
+    data = transactions.map(tx => {
+      // Helper to format therapist string for an item
+      const getItemTherapists = (i: any) => {
+        const main = i.therapistId ? therapistMap.get(i.therapistId) : null
+        const asstName = i.assistantId ? (therapistMap.get(i.assistantId) || 'Unknown') : null
+        const asst = asstName ? `(Asst: ${asstName})` : null
+        return [main, asst].filter(Boolean).join(' ')
+      }
+
+      const txCommission = tx.items.reduce((sum, item) => {
+        const itemComm = item.commission ? item.commission.reduce((cSum, c) => cSum + Number(c.amount), 0) : 0
+        return sum + itemComm
+      }, 0)
+
+      return {
       id: tx.id,
       date: tx.createdAt,
       number: tx.number,
@@ -771,16 +872,21 @@ export async function getFinancialReport(filters: ReportFilters) {
               (i.treatmentId ? txTreatmentMap.get(i.treatmentId) : null) || 
               'Unknown Item',
         qty: i.qty,
-        type: i.type
+        type: i.type,
+        // Add therapist info to detail for potential future use
+        therapists: getItemTherapists(i)
       })),
       qty: tx.items.reduce((a,b) => a + b.qty, 0),
       price: normalizeDecimal(tx.total),
+      commission: normalizeDecimal(txCommission),
       member: (tx.memberId ? memberMap.get(tx.memberId) : null) || '-',
       category: categoryMap.get(tx.categoryId) || 'Unknown',
       therapists: Array.from(new Set(
-        tx.items.map(i => i.therapistId ? therapistMap.get(i.therapistId) : null).filter(Boolean)
-      )).join(', ')
-    }))
+        tx.items.map(i => getItemTherapists(i)).filter(Boolean)
+      )).join(', '),
+      paymentMethod: tx.paymentMethod
+    }
+  })
   }
 
   return {

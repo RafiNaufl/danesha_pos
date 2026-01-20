@@ -14,7 +14,7 @@ type ReceiptItem = {
 type Props = {
   width: 58 | 80
   store: { name: string; address?: string | null; phone?: string | null }
-  tx: { number: string; createdAt: Date; categoryCode: string; memberCode?: string | null; memberName?: string | null }
+  tx: { number: string; createdAt: Date; categoryCode: string; memberCode?: string | null; memberName?: string | null; paymentMethod?: string }
   items: ReceiptItem[]
   totals: { subtotal: string; discount: string; total: string }
   autoPrint?: boolean
@@ -56,6 +56,7 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
           <div>No: {tx.number}</div>
           <div className="text-right">{new Date(tx.createdAt).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</div>
           <div>Kat: {tx.categoryCode}</div>
+          {tx.paymentMethod && <div>Metode: {tx.paymentMethod}</div>}
           {tx.memberCode && <div className="col-span-2">{tx.memberCode} {tx.memberName ? `- ${tx.memberName}` : ''}</div>}
         </div>
 

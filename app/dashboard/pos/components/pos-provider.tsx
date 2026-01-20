@@ -24,6 +24,8 @@ export type CartItem = {
   // Treatment specific
   therapistId?: string
   therapistName?: string // For display
+  assistantId?: string
+  assistantName?: string
   // Metadata for re-calculation
   product?: any
   treatment?: any
@@ -80,7 +82,7 @@ function posReducer(state: PosState, action: Action): PosState {
       const existingIdx = state.items.findIndex(i => 
         i.type === newItem.type && 
         ((i.type === 'PRODUCT' && i.productId === newItem.productId) || 
-         (i.type === 'TREATMENT' && i.treatmentId === newItem.treatmentId && i.therapistId === newItem.therapistId))
+         (i.type === 'TREATMENT' && i.treatmentId === newItem.treatmentId && i.therapistId === newItem.therapistId && i.assistantId === newItem.assistantId))
       )
 
       if (existingIdx >= 0 && newItem.type === 'PRODUCT') {

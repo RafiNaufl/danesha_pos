@@ -366,12 +366,12 @@ export default function ReportsClient({ options }: Props) {
       sheetSummary.addRow(['Total Komisi', fullData.therapistStats.totalCommission]).getCell(2).numFmt = '#,##0'
       
       sheetSummary.addRow(['Breakdown Therapist:'])
-      sheetSummary.addRow(['Nama Therapist', 'Omzet', 'Komisi', 'Jml Treatment', 'Avg Omzet'])
+      sheetSummary.addRow(['Nama Therapist', 'Omzet', 'Komisi', 'Total Tx', 'Main Tx', 'Asst Tx', 'Avg Omzet'])
       fullData.therapistStats.byTherapist.forEach((t: any) => {
-        const r = sheetSummary.addRow([t.therapistName, t.omzet, t.commission, t.treatmentCount, t.avgOmzet])
+        const r = sheetSummary.addRow([t.therapistName, t.omzet, t.commission, t.treatmentCount, t.mainCount || 0, t.assistantCount || 0, t.avgOmzet])
         r.getCell(2).numFmt = '#,##0'
         r.getCell(3).numFmt = '#,##0'
-        r.getCell(5).numFmt = '#,##0'
+        r.getCell(7).numFmt = '#,##0'
       })
 
       // Auto width for Summary
@@ -397,6 +397,7 @@ export default function ReportsClient({ options }: Props) {
         { header: 'Member', key: 'member', width: 20 },
         { header: 'Kategori', key: 'category', width: 15 },
         { header: 'Therapist', key: 'therapist', width: 20 },
+        { header: 'Metode Pembayaran', key: 'paymentMethod', width: 20 },
       ]
 
       // Style Header
@@ -417,7 +418,8 @@ export default function ReportsClient({ options }: Props) {
                 price: tx.price,
                 member: tx.member,
                 category: tx.category,
-                therapist: tx.therapists
+                therapist: tx.therapists,
+                paymentMethod: tx.paymentMethod
              })
         } else {
              // TRANSACTION LEVEL
@@ -430,7 +432,8 @@ export default function ReportsClient({ options }: Props) {
                 price: tx.price,
                 member: tx.member,
                 category: tx.category,
-                therapist: tx.therapists
+                therapist: tx.therapists,
+                paymentMethod: tx.paymentMethod
              })
         }
       })
@@ -884,6 +887,11 @@ export default function ReportsClient({ options }: Props) {
                            <div>
                              <span className="block opacity-70">Treatment</span>
                              <span className="font-medium text-foreground">{t.treatmentCount || 0}</span>
+                             {t.assistantCount > 0 && (
+                               <span className="text-[10px] block text-blue-600 mt-0.5" title={`Menjadi asisten di ${t.assistantCount} treatment`}>
+                                 (Asst: {t.assistantCount})
+                               </span>
+                             )}
                            </div>
                            <div>
                              <span className="block opacity-70">Avg/Trt</span>
@@ -1071,6 +1079,7 @@ export default function ReportsClient({ options }: Props) {
                   <TableHead>Item / Detail</TableHead>
                   <TableHead>Member / Kategori</TableHead>
                   <TableHead>Therapist</TableHead>
+                  <TableHead>Metode Pembayaran</TableHead>
                   <TableHead className="text-right">
                     {filters.therapistId !== 'all' ? 'Nilai (Item)' : 'Nilai (Total Invoice)'}
                   </TableHead>
@@ -1135,6 +1144,7 @@ export default function ReportsClient({ options }: Props) {
                       <div className="text-xs text-muted-foreground">{row.category}</div>
                     </TableCell>
                     <TableCell className="text-xs">{row.therapists || '-'}</TableCell>
+                    <TableCell className="text-xs">{row.paymentMethod}</TableCell>
                     <TableCell className="text-right font-medium">
                       {formatMoney(Number(row.price))}
                     </TableCell>

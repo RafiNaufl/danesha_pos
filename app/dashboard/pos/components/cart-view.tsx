@@ -87,7 +87,10 @@ export function CartView() {
                       {item.type === 'TREATMENT' && (
                         <div className="flex items-center gap-1 text-xs text-purple-600 mt-0.5">
                           <User size={10} />
-                          <span>{item.therapistName}</span>
+                          <span>
+                            {item.therapistName}
+                            {item.assistantName && <span className="text-gray-500"> + {item.assistantName}</span>}
+                          </span>
                         </div>
                       )}
                     </div>

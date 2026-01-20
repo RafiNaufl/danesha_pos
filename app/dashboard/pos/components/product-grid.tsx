@@ -33,10 +33,15 @@ type SerializedTreatment = Omit<Treatment, 'costPrice' | 'sellPrice'> & {
   } | null
 }
 
+type SerializedTherapist = Omit<Therapist, 'commissionPercent' | 'level'> & {
+  commissionPercent: number | null
+  level: { name: string } | null
+}
+
 type Props = {
   products: SerializedProduct[]
   treatments: SerializedTreatment[]
-  therapists: Therapist[]
+  therapists: SerializedTherapist[]
 }
 
 function formatMoney(amount: number) {
@@ -46,6 +51,19 @@ function formatMoney(amount: number) {
 export function ProductGrid({ products, treatments, therapists }: Props) {
   const { state, dispatch } = usePos()
   const [selectedTreatment, setSelectedTreatment] = useState<SerializedTreatment | null>(null)
+  const [selectedMainTherapist, setSelectedMainTherapist] = useState<SerializedTherapist | null>(null)
+  const [selectedAssistantTherapist, setSelectedAssistantTherapist] = useState<SerializedTherapist | null>(null)
+
+  // Split therapists by level
+  const seniorTherapists = therapists.filter(t => t.level?.name.toLowerCase().includes('senior'))
+  const juniorTherapists = therapists.filter(t => !t.level?.name.toLowerCase().includes('senior'))
+
+  // Reset selection when treatment modal closes
+  const closeTreatmentModal = () => {
+    setSelectedTreatment(null)
+    setSelectedMainTherapist(null)
+    setSelectedAssistantTherapist(null)
+  }
 
   // Filter items
   const filteredProducts = products.filter(p => 
@@ -90,8 +108,8 @@ export function ProductGrid({ products, treatments, therapists }: Props) {
     setSelectedTreatment(treatment)
   }
 
-  const confirmTherapist = (therapist: Therapist) => {
-    if (!selectedTreatment) return
+  const handleConfirmTherapists = () => {
+    if (!selectedTreatment || !selectedMainTherapist) return
     const basePrice = selectedTreatment.sellPrice
     const { finalPrice, discountAmount } = calculateDiscount(basePrice, selectedTreatment.discount)
     const hasValidDiscount = discountAmount > 0
@@ -107,15 +125,17 @@ export function ProductGrid({ products, treatments, therapists }: Props) {
           basePrice: basePrice,
           price: basePrice,
           qty: 1,
-          therapistId: therapist.id,
-          therapistName: therapist.name,
+          therapistId: selectedMainTherapist.id,
+          therapistName: selectedMainTherapist.name,
+          assistantId: selectedAssistantTherapist?.id,
+          assistantName: selectedAssistantTherapist?.name,
           treatment: selectedTreatment,
           discountType: hasValidDiscount ? selectedTreatment.discount?.type : undefined,
           discountValue: hasValidDiscount ? selectedTreatment.discount?.value : undefined
         }
       }
     })
-    setSelectedTreatment(null)
+    closeTreatmentModal()
   }
 
   return (
@@ -207,34 +227,103 @@ export function ProductGrid({ products, treatments, therapists }: Props) {
       {/* Therapist Selection Modal */}
       {selectedTreatment && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-2xl md:rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-200">
-            <div className="p-4 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-2xl md:rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-200 flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex-shrink-0">
               <h3 className="font-semibold text-lg">Pilih Therapist</h3>
               <p className="text-sm text-gray-500">Untuk {selectedTreatment.name}</p>
             </div>
-            <div className="p-4 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-              {therapists.map(therapist => (
-                <button
-                  key={therapist.id}
-                  onClick={() => confirmTherapist(therapist)}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 active:bg-neutral-100 transition text-left"
-                >
-                  <div className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-lg font-bold text-gray-600">
-                    {therapist.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="font-medium">{therapist.name}</div>
-                    <div className="text-xs text-green-600">Available</div>
-                  </div>
-                </button>
-              ))}
+            <div className="p-4 overflow-y-auto space-y-6 flex-grow">
+              {/* Senior Therapist Section - Main */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-500 mb-3 sticky top-0 bg-white dark:bg-neutral-900 py-1 z-10 flex items-center justify-between">
+                  <span>Terapis Utama (Senior) <span className="text-red-500">*</span></span>
+                  {selectedMainTherapist && <span className="text-xs text-purple-600 font-normal">Terpilih: {selectedMainTherapist.name}</span>}
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {seniorTherapists.map(therapist => {
+                    const isSelected = selectedMainTherapist?.id === therapist.id
+                    return (
+                      <button
+                        key={therapist.id}
+                        onClick={() => setSelectedMainTherapist(therapist)}
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-xl border transition text-left",
+                          isSelected 
+                            ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20 ring-1 ring-purple-500" 
+                            : "border-purple-200 dark:border-purple-900/50 bg-purple-50/30 dark:bg-purple-900/10 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold transition-colors",
+                          isSelected ? "bg-purple-500 text-white" : "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+                        )}>
+                          {therapist.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-medium">{therapist.name}</div>
+                          <div className="text-xs text-green-600">Available</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Junior Therapist Section - Assistant */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-500 mb-3 sticky top-0 bg-white dark:bg-neutral-900 py-1 z-10 flex items-center justify-between">
+                  <span>Asisten Terapis (Junior) <span className="text-gray-400 font-normal">(Opsional)</span></span>
+                  {selectedAssistantTherapist && <span className="text-xs text-neutral-600 font-normal">Terpilih: {selectedAssistantTherapist.name}</span>}
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {juniorTherapists.map(therapist => {
+                    const isSelected = selectedAssistantTherapist?.id === therapist.id
+                    return (
+                      <button
+                        key={therapist.id}
+                        onClick={() => setSelectedAssistantTherapist(isSelected ? null : therapist)}
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-xl border transition text-left",
+                          isSelected
+                            ? "border-neutral-500 bg-neutral-100 dark:bg-neutral-800 ring-1 ring-neutral-500"
+                            : "border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold transition-colors",
+                          isSelected ? "bg-neutral-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-gray-600"
+                        )}>
+                          {therapist.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-medium">{therapist.name}</div>
+                          <div className="text-xs text-green-600">Available</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
-            <div className="p-4 border-t border-neutral-100 dark:border-neutral-800">
+            
+            <div className="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex gap-3 flex-shrink-0">
               <button 
-                onClick={() => setSelectedTreatment(null)}
-                className="w-full py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition"
+                onClick={closeTreatmentModal}
+                className="flex-1 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition"
               >
                 Batal
+              </button>
+              <button 
+                onClick={handleConfirmTherapists}
+                disabled={!selectedMainTherapist}
+                className={cn(
+                  "flex-1 py-3 rounded-xl font-bold text-white transition shadow-sm",
+                  selectedMainTherapist 
+                    ? "bg-primary hover:bg-primary/90 active:scale-[0.98]" 
+                    : "bg-gray-300 dark:bg-gray-700 cursor-not-allowed"
+                )}
+              >
+                Konfirmasi
               </button>
             </div>
           </div>

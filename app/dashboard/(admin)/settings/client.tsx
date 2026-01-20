@@ -1,16 +1,27 @@
+
 'use client'
 
 import { useState } from 'react'
 import { Settings } from '@prisma/client'
-import { Save, Store } from 'lucide-react'
+import { Save, Store, UserCog } from 'lucide-react'
 import { updateSettings } from '@/app/actions/admin/settings'
+import { updateTherapistLevel } from '@/app/actions/admin/therapist-levels'
 import { cn } from '@/lib/utils'
+
+type Level = {
+  id: string
+  name: string
+  defaultCommission: number
+  minCommission: number
+  maxCommission: number
+}
 
 type Props = {
   initialSettings: Omit<Settings, 'commissionDefaultPercent'> & { commissionDefaultPercent: number }
+  initialLevels: Level[]
 }
 
-export function SettingsClient({ initialSettings }: Props) {
+export function SettingsClient({ initialSettings, initialLevels }: Props) {
   const [formData, setFormData] = useState({
      storeName: initialSettings.storeName,
      storeAddress: initialSettings.storeAddress || '',
@@ -18,6 +29,7 @@ export function SettingsClient({ initialSettings }: Props) {
      commissionDefaultPercent: initialSettings.commissionDefaultPercent.toString()
   })
   const [loading, setLoading] = useState(false)
+  const [levels, setLevels] = useState(initialLevels)
 
   const handleSubmit = async (e: React.FormEvent) => {
      e.preventDefault()
@@ -38,7 +50,7 @@ export function SettingsClient({ initialSettings }: Props) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto pb-10">
       <div className="flex items-center gap-3 mb-8">
         <div className="bg-blue-100 p-3 rounded-full text-blue-600">
           <Store className="h-6 w-6" />
@@ -76,8 +88,8 @@ export function SettingsClient({ initialSettings }: Props) {
            />
          </div>
 
-         <div className="pt-4 border-t">
-           <h3 className="font-semibold mb-4">Komisi & Gaji</h3>
+         <div className="pt-4 border-t hidden">
+           <h3 className="font-semibold mb-4">Global Default</h3>
            <div>
              <label className="block text-sm font-medium mb-1">Default Komisi Therapist (%)</label>
              <div className="relative w-32">
@@ -92,7 +104,7 @@ export function SettingsClient({ initialSettings }: Props) {
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
              </div>
-             <p className="text-xs text-gray-500 mt-1">Digunakan jika komisi per item tidak diset.</p>
+             <p className="text-xs text-gray-500 mt-1">Digunakan sebagai fallback terakhir.</p>
            </div>
          </div>
 
@@ -107,6 +119,96 @@ export function SettingsClient({ initialSettings }: Props) {
             </button>
          </div>
       </form>
+
+      <div className="mt-10">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-purple-100 p-3 rounded-full text-purple-600">
+            <UserCog className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-bold">Level & Komisi Therapist</h2>
+        </div>
+        
+        <div className="grid gap-6">
+          {levels.map((level) => (
+            <LevelForm key={level.id} level={level} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LevelForm({ level }: { level: Level }) {
+  const [data, setData] = useState(level)
+  const [loading, setLoading] = useState(false)
+
+  const handleSave = async () => {
+    setLoading(true)
+    try {
+      await updateTherapistLevel(data)
+      alert(`Level ${level.name} berhasil disimpan`)
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-white p-6 rounded-xl shadow-sm border">
+       <div className="flex justify-between items-start mb-4">
+          <h3 className="text-lg font-bold text-gray-800">{level.name}</h3>
+          <span className="px-2 py-1 bg-gray-100 text-xs font-semibold rounded text-gray-500">ID: {level.id.slice(-4)}</span>
+       </div>
+       
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div>
+             <label className="block text-xs font-medium text-gray-500 mb-1">Default Komisi</label>
+             <div className="relative">
+               <input 
+                 type="number" 
+                 className="w-full p-2 pr-8 border rounded-lg font-medium"
+                 value={data.defaultCommission}
+                 onChange={e => setData({...data, defaultCommission: Number(e.target.value)})}
+               />
+               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+             </div>
+          </div>
+          <div>
+             <label className="block text-xs font-medium text-gray-500 mb-1">Min. Komisi</label>
+             <div className="relative">
+               <input 
+                 type="number" 
+                 className="w-full p-2 pr-8 border rounded-lg"
+                 value={data.minCommission}
+                 onChange={e => setData({...data, minCommission: Number(e.target.value)})}
+               />
+               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+             </div>
+          </div>
+          <div>
+             <label className="block text-xs font-medium text-gray-500 mb-1">Max. Komisi</label>
+             <div className="relative">
+               <input 
+                 type="number" 
+                 className="w-full p-2 pr-8 border rounded-lg"
+                 value={data.maxCommission}
+                 onChange={e => setData({...data, maxCommission: Number(e.target.value)})}
+               />
+               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+             </div>
+          </div>
+       </div>
+
+       <div className="flex justify-end">
+          <button 
+            onClick={handleSave}
+            disabled={loading}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+          >
+            {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+          </button>
+       </div>
     </div>
   )
 }

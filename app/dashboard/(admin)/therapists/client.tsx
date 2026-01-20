@@ -1,28 +1,43 @@
+
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Therapist } from '@prisma/client'
 import { Plus, Search, Edit, X, UserCog, DollarSign, Calendar } from 'lucide-react'
 import { upsertTherapist, deleteTherapist, getTherapistCommissions } from '@/app/actions/admin/therapists'
 import { cn, formatMoney } from '@/lib/utils'
 
-type Props = {
-  initialTherapists: Therapist[]
+type Level = {
+  id: string
+  name: string
+  defaultCommission: number
+  minCommission: number
+  maxCommission: number
 }
 
-export function TherapistsClient({ initialTherapists }: Props) {
+type TherapistWithLevel = Omit<Therapist, 'commissionPercent'> & {
+  commissionPercent: number | null
+  level?: Level | null
+}
+
+type Props = {
+  initialTherapists: TherapistWithLevel[]
+  initialLevels: Level[]
+}
+
+export function TherapistsClient({ initialTherapists, initialLevels }: Props) {
   const [therapists, setTherapists] = useState(initialTherapists)
   const [search, setSearch] = useState('')
-  const [editingTherapist, setEditingTherapist] = useState<Therapist | null>(null)
+  const [editingTherapist, setEditingTherapist] = useState<TherapistWithLevel | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
-  const [commissionView, setCommissionView] = useState<{therapist: Therapist, data: any} | null>(null)
+  const [commissionView, setCommissionView] = useState<{therapist: TherapistWithLevel, data: any} | null>(null)
 
   const filteredTherapists = initialTherapists.filter(t => 
     t.name.toLowerCase().includes(search.toLowerCase()) || 
     (t.phone && t.phone.includes(search))
   )
 
-  const handleEdit = (therapist: Therapist) => {
+  const handleEdit = (therapist: TherapistWithLevel) => {
     setEditingTherapist(therapist)
     setIsSheetOpen(true)
   }
@@ -32,7 +47,7 @@ export function TherapistsClient({ initialTherapists }: Props) {
     setIsSheetOpen(true)
   }
 
-  const handleViewCommissions = async (therapist: Therapist) => {
+  const handleViewCommissions = async (therapist: TherapistWithLevel) => {
     // Default to current month
     const date = new Date()
     const firstDay = new Date(date.getFullYear(), date.getMonth(), 1)
@@ -76,7 +91,14 @@ export function TherapistsClient({ initialTherapists }: Props) {
                 </div>
                 <div>
                    <h3 className="font-semibold">{item.name}</h3>
-                   <p className="text-sm text-gray-500">{item.phone || '-'}</p>
+                   <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span>{item.phone || '-'}</span>
+                      {item.level && (
+                        <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded text-xs font-medium">
+                           {item.level.name} ({item.commissionPercent}%)
+                        </span>
+                      )}
+                   </div>
                    {!item.active && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full inline-block mt-1">Inactive</span>}
                 </div>
              </div>
@@ -100,6 +122,7 @@ export function TherapistsClient({ initialTherapists }: Props) {
       {isSheetOpen && (
         <TherapistForm 
            therapist={editingTherapist} 
+           levels={initialLevels}
            onClose={() => setIsSheetOpen(false)}
         />
       )}
@@ -116,21 +139,55 @@ export function TherapistsClient({ initialTherapists }: Props) {
   )
 }
 
-function TherapistForm({ therapist, onClose }: { therapist: Therapist | null, onClose: () => void }) {
+function TherapistForm({ therapist, levels, onClose }: { therapist: TherapistWithLevel | null, levels: Level[], onClose: () => void }) {
   const [formData, setFormData] = useState({
      name: therapist?.name || '',
      phone: therapist?.phone || '',
-     active: therapist?.active ?? true
+     active: therapist?.active ?? true,
+     levelId: therapist?.levelId || '',
+     commissionPercent: therapist?.commissionPercent?.toString() || ''
   })
   const [loading, setLoading] = useState(false)
+  const [selectedLevel, setSelectedLevel] = useState<Level | null>(
+    therapist?.level || levels.find(l => l.id === therapist?.levelId) || null
+  )
+
+  const handleLevelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const levelId = e.target.value
+    const level = levels.find(l => l.id === levelId) || null
+    setSelectedLevel(level)
+    
+    // Auto fill commission if selecting a level and commission is empty or different
+    if (level) {
+      setFormData(prev => ({
+        ...prev,
+        levelId,
+        commissionPercent: level.defaultCommission.toString()
+      }))
+    } else {
+      setFormData(prev => ({ ...prev, levelId: '' }))
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     try {
+      // Client-side validation
+      if (selectedLevel) {
+        const comm = Number(formData.commissionPercent)
+        if (comm < selectedLevel.minCommission || comm > selectedLevel.maxCommission) {
+          throw new Error(`Komisi untuk ${selectedLevel.name} harus antara ${selectedLevel.minCommission}% - ${selectedLevel.maxCommission}%`)
+        }
+      }
+
       await upsertTherapist({
         id: therapist?.id,
-        ...formData
+        name: formData.name,
+        phone: formData.phone,
+        active: formData.active,
+        levelId: formData.levelId || undefined,
+        commissionPercent: formData.commissionPercent ? Number(formData.commissionPercent) : undefined
       })
       onClose()
     } catch (e: any) {
@@ -186,6 +243,39 @@ function TherapistForm({ therapist, onClose }: { therapist: Therapist | null, on
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                 <label className="block text-sm font-medium mb-1">Level</label>
+                 <select 
+                   className="w-full p-2 border rounded-lg bg-white"
+                   value={formData.levelId}
+                   onChange={handleLevelChange}
+                 >
+                   <option value="">-- Pilih Level --</option>
+                   {levels.map(l => (
+                     <option key={l.id} value={l.id}>{l.name}</option>
+                   ))}
+                 </select>
+              </div>
+              <div>
+                 <label className="block text-sm font-medium mb-1">Komisi (%)</label>
+                 <div className="relative">
+                   <input 
+                     type="number"
+                     step="0.1"
+                     className="w-full p-2 pr-8 border rounded-lg"
+                     value={formData.commissionPercent}
+                     onChange={e => setFormData({...formData, commissionPercent: e.target.value})}
+                     placeholder={selectedLevel ? `${selectedLevel.defaultCommission}` : '0'}
+                   />
+                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                 </div>
+                 {selectedLevel && (
+                   <p className="text-xs text-gray-500 mt-1">Range: {selectedLevel.minCommission}% - {selectedLevel.maxCommission}%</p>
+                 )}
+              </div>
+            </div>
+
             <div className="flex items-center gap-2 py-2">
                <input 
                  type="checkbox"
@@ -222,7 +312,7 @@ function TherapistForm({ therapist, onClose }: { therapist: Therapist | null, on
   )
 }
 
-function CommissionModal({ therapist, initialData, onClose }: { therapist: Therapist, initialData: any, onClose: () => void }) {
+function CommissionModal({ therapist, initialData, onClose }: { therapist: TherapistWithLevel, initialData: any, onClose: () => void }) {
   const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
   const [month, setMonth] = useState(() => {

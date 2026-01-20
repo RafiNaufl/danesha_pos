@@ -2,8 +2,29 @@
 
 import { prisma } from '@/app/lib/prisma'
 import { getAllProductStocks } from '@/app/actions/stock'
+import { Prisma } from '@prisma/client'
 
-// Force refresh
+// Explicitly define the Therapist type to avoid linter resolution issues
+interface RawTherapist {
+  id: string
+  name: string
+  phone: string | null
+  active: boolean
+  levelId: string | null
+  level: { 
+    id: string
+    name: string
+    defaultCommission: Prisma.Decimal
+    minCommission: Prisma.Decimal
+    maxCommission: Prisma.Decimal
+    createdAt: Date
+    updatedAt: Date
+  } | null
+  commissionPercent: Prisma.Decimal | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 // Force refresh
 export async function getPosData() {
   const [products, treatments, therapists, categories, stockMap] = await Promise.all([
@@ -19,8 +40,10 @@ export async function getPosData() {
     }),
     prisma.therapist.findMany({
       where: { active: true },
+      // @ts-ignore: Prisma client type generation issue with relation
+      include: { level: true },
       orderBy: { name: 'asc' }
-    }),
+    }) as unknown as RawTherapist[],
     prisma.customerCategory.findMany({
       orderBy: { name: 'asc' }
     }),
@@ -58,10 +81,24 @@ export async function getPosData() {
     } : null
   }))
 
+  const serializedTherapists = therapists.map(t => ({
+    ...t,
+    commissionPercent: t.commissionPercent ? t.commissionPercent.toNumber() : null,
+    level: t.level ? {
+      id: t.level.id,
+      name: t.level.name,
+      defaultCommission: t.level.defaultCommission.toNumber(),
+      minCommission: t.level.minCommission.toNumber(),
+      maxCommission: t.level.maxCommission.toNumber(),
+      createdAt: t.level.createdAt,
+      updatedAt: t.level.updatedAt
+    } : null
+  }))
+
   return { 
     products: serializedProducts, 
     treatments: serializedTreatments, 
-    therapists, 
+    therapists: serializedTherapists, 
     categories 
   }
 }

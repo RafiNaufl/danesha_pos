@@ -27,11 +27,16 @@ type SerializedTreatment = Omit<Treatment, 'costPrice' | 'sellPrice'> & {
   sellPrice: number
 }
 
+type SerializedTherapist = Omit<Therapist, 'commissionPercent' | 'level'> & {
+  commissionPercent: number | null
+  level: { name: string } | null
+}
+
 type Props = {
   data: {
     products: SerializedProduct[]
     treatments: SerializedTreatment[]
-    therapists: Therapist[]
+    therapists: SerializedTherapist[]
     categories: CustomerCategory[]
   }
   session: Session | null

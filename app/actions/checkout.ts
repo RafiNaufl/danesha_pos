@@ -11,6 +11,7 @@ type CheckoutItemInput = {
   productId?: string
   treatmentId?: string
   therapistId?: string
+  assistantId?: string
   qty: number
   discountType?: DiscountType
   discountValue?: string | number
@@ -96,6 +97,10 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
 
   try {
     const result = await prisma.$transaction(async tx => {
+      // ... (rest of the code inside transaction is effectively same, but wait, I need to log INSIDE the transaction or BEFORE?)
+      // txItemsData is built INSIDE the transaction loop in the original code.
+      // So I must insert log INSIDE the transaction function, before transaction.create.
+
       const number = genTxNumber()
       let subtotal = new Prisma.Decimal(0)
     let discountTotal = new Prisma.Decimal(0)
@@ -178,7 +183,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
 
         txItemsData.push({
             type: ItemType.PRODUCT,
-            productId: product.id,
+            product: { connect: { id: product.id } },
             qty: it.qty,
             unitPrice,
             discountType,
@@ -195,8 +200,26 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         // categoryId tetap disimpan di Transaction untuk konsistensi audit, namun tidak mempengaruhi harga treatment.
         const treatment = await tx.treatment.findUnique({ where: { id: it.treatmentId! } })
         if (!treatment) throw new Error('Treatment not found')
-        const therapist = await tx.therapist.findUnique({ where: { id: it.therapistId! } })
+        // GUARD: Treatment inactive
+        if (!treatment.active) throw new Error(`Treatment ${treatment.name} sudah tidak aktif`)
+
+        // Validate Therapist
+        const therapist = await tx.therapist.findUnique({ 
+          where: { id: it.therapistId! },
+          include: { level: true }
+        })
         if (!therapist || !therapist.active) throw new Error('Therapist sudah tidak aktif, silakan pilih ulang')
+
+        // Validate Assistant (if any)
+        let assistant = null
+        if (it.assistantId) {
+           assistant = await tx.therapist.findUnique({
+              where: { id: it.assistantId },
+              include: { level: true }
+           })
+           if (!assistant || !assistant.active) throw new Error('Asisten sudah tidak aktif, silakan pilih ulang')
+        }
+
         const unitPrice = await getTreatmentPrice(treatment.id)
         const discountType = it.discountType ?? null
         const discountValue = new Prisma.Decimal(it.discountValue ?? 0)
@@ -208,18 +231,71 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         discountTotal = discountTotal.add(ld)
         total = total.add(lt)
         costTotal = costTotal.add(lc)
-        profitTotal = profitTotal.add(lp)
+        // Profit will be added after commission deduction
+        
+        // PRIORITY: Therapist Commission > Level Default > Global Default
+        let percent = settingsPercent
+        if (therapist.commissionPercent) {
+          percent = therapist.commissionPercent
+        } else if (therapist.level?.defaultCommission) {
+          percent = therapist.level.defaultCommission
+        }
 
-        const percent = settingsPercent
         // Commission calculated from discounted lineTotal (snapshot, audit-safe)
         const amount = lt.mul(percent).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
         if (amount.lessThan(0)) throw new Error('Invalid commission: negative')
         commissionTotal = commissionTotal.add(amount)
 
+        // Assistant Commission
+        let assistantCommissionCreate = undefined
+        let assistantAmount = new Prisma.Decimal(0)
+        
+        if (assistant) {
+            let aPercent = settingsPercent
+            if (assistant.commissionPercent) {
+                aPercent = assistant.commissionPercent
+            } else if (assistant.level?.defaultCommission) {
+                aPercent = assistant.level.defaultCommission
+            }
+            assistantAmount = lt.mul(aPercent).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+            commissionTotal = commissionTotal.add(assistantAmount)
+            
+            assistantCommissionCreate = {
+                therapistId: assistant.id,
+                percent: aPercent,
+                amount: assistantAmount,
+                commissionBaseAmount: lt,
+                commissionPercent: aPercent,
+                commissionAmount: assistantAmount,
+            }
+        }
+
+        const commissionsToCreate = [{
+            therapistId: it.therapistId!,
+            percent,
+            amount,
+            commissionBaseAmount: lt,
+            commissionPercent: percent,
+            commissionAmount: amount,
+        }]
+        
+        if (assistantCommissionCreate) {
+            commissionsToCreate.push(assistantCommissionCreate)
+        }
+
+        // PROFIT CALCULATION (Anti Double Count)
+        // profit = lineTotal - costPrice - totalCommissionItem
+        // Komisi dianggap biaya
+        const totalItemCommission = amount.add(assistantAmount)
+        const finalProfit = lp.sub(totalItemCommission).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+        
+        profitTotal = profitTotal.add(finalProfit)
+
         txItemsData.push({
             type: ItemType.TREATMENT,
-            treatmentId: treatment.id,
-            therapistId: it.therapistId!,
+            treatment: { connect: { id: treatment.id } },
+            therapist: { connect: { id: it.therapistId! } },
+            assistant: it.assistantId ? { connect: { id: it.assistantId } } : undefined,
             qty: it.qty,
             unitPrice,
             discountType,
@@ -228,16 +304,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             lineDiscount: ld,
             lineTotal: lt,
             costPrice: treatment.costPrice,
-            profit: lp,
+            profit: finalProfit, // STORED NET PROFIT
             commission: {
-                create: {
-                    therapistId: it.therapistId!,
-                    percent,
-                    amount,
-                    commissionBaseAmount: lt,
-                    commissionPercent: percent,
-                    commissionAmount: amount,
-                }
+                create: commissionsToCreate
             }
         })
       }
@@ -252,6 +321,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
     costTotal = costTotal.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
     profitTotal = profitTotal.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
     commissionTotal = commissionTotal.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+
+    console.log('DEBUG: txItemsData', JSON.stringify(txItemsData, null, 2))
 
     let t: any
     try {
@@ -279,7 +350,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       } as any),
       include: {
         items: {
-          include: { product: true, treatment: true, therapist: true }
+          include: { product: true, treatment: true, therapist: true, assistant: true }
         }
       }
     })
@@ -304,6 +375,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             categoryCode: dupe.category.code,
             memberCode: dupe.member?.memberCode,
             memberName: dupe.member?.name,
+            paymentMethod: dupe.paymentMethod,
             items: dupe.items.map((i: any) => ({
               id: i.id,
               type: i.type,
@@ -394,7 +466,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         lineSubtotal: Number(i.lineSubtotal),
         lineDiscount: Number(i.lineDiscount),
         lineTotal: Number(i.lineTotal),
-        therapistName: i.therapist?.name || null
+        therapistName: i.therapist?.name || null,
+        assistantName: i.assistant?.name || null
       })),
       info: { discountAppliedToTotalQty: true, message: 'Diskon diterapkan ke TOTAL qty, bukan per item' }
     }

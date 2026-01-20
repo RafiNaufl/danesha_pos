@@ -1,3 +1,4 @@
+
 'use server'
 
 import { prisma } from '@/app/lib/prisma'
@@ -10,13 +11,27 @@ const TherapistSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().optional(),
   active: z.boolean().default(true),
+  levelId: z.string().optional(),
+  commissionPercent: z.coerce.number().optional(),
 })
 
 export async function getTherapists() {
   await requireAdmin()
-  return prisma.therapist.findMany({
+  const therapists = await prisma.therapist.findMany({
+    include: { level: true },
     orderBy: { name: 'asc' }
   })
+  
+  return therapists.map(t => ({
+    ...t,
+    commissionPercent: t.commissionPercent ? t.commissionPercent.toNumber() : null,
+    level: t.level ? {
+      ...t.level,
+      defaultCommission: t.level.defaultCommission.toNumber(),
+      minCommission: t.level.minCommission.toNumber(),
+      maxCommission: t.level.maxCommission.toNumber(),
+    } : null
+  }))
 }
 
 export async function upsertTherapist(data: z.infer<typeof TherapistSchema>) {
@@ -24,16 +39,29 @@ export async function upsertTherapist(data: z.infer<typeof TherapistSchema>) {
   const val = TherapistSchema.safeParse(data)
   if (!val.success) throw new Error(val.error.errors[0].message)
 
-  const { id, name, phone, active } = val.data
+  const { id, name, phone, active, levelId, commissionPercent } = val.data
+
+  // Validation Logic
+  if (levelId && commissionPercent !== undefined && commissionPercent !== null) {
+     const level = await prisma.therapistLevel.findUnique({ where: { id: levelId } })
+     if (!level) throw new Error("Level invalid")
+     
+     const min = level.minCommission.toNumber()
+     const max = level.maxCommission.toNumber()
+     
+     if (commissionPercent < min || commissionPercent > max) {
+        throw new Error(`Komisi untuk level ${level.name} harus antara ${min}% - ${max}%`)
+     }
+  }
 
   if (id) {
     await prisma.therapist.update({
       where: { id },
-      data: { name, phone, active }
+      data: { name, phone, active, levelId, commissionPercent }
     })
   } else {
     await prisma.therapist.create({
-      data: { name, phone, active }
+      data: { name, phone, active, levelId, commissionPercent }
     })
   }
   revalidatePath('/therapists')
