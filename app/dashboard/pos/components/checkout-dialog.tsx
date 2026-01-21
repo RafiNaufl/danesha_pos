@@ -6,8 +6,6 @@ import { X, Check, Printer, Loader2, Banknote, ArrowRightLeft, QrCode } from 'lu
 import { checkout } from '@/app/actions/checkout'
 import ReceiptPrint from '@/app/components/ReceiptPrint'
 import { printerService } from '@/lib/printer/bluetooth'
-import { generateReceipt } from '@/lib/printer/escpos'
-import { PrintableTransaction } from '@/lib/printer/types'
 import { useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 
@@ -74,29 +72,25 @@ export function CheckoutDialog() {
 
   const handleBluetoothPrint = async (tx: any) => {
     try {
-      const printableTx: PrintableTransaction = {
-        id: tx.id || '0',
-        number: tx.number,
-        createdAt: tx.createdAt,
-        cashierName: 'Staff', // TODO: Get from session
-        customerCategory: tx.categoryCode || 'General',
+      const receiptData = {
         storeName: 'Danesha Clinic',
+        storeAddress: 'Jl. Contoh No. 123', // TODO: Get from settings
+        transactionId: tx.number,
+        date: new Date(tx.createdAt).toLocaleString('id-ID'),
+        cashierName: 'Staff', // TODO: Get from session
+        subtotal: Number(tx.subtotal),
+        tax: 0, // Tax handling if any
+        total: Number(tx.total),
+        footerMessage: 'Terima kasih atas kunjungan Anda',
         items: (tx.items || []).map((i: any) => ({
           name: i.name,
-          qty: i.qty,
-          unitPrice: Number(i.unitPrice),
-          lineTotal: Number(i.lineTotal)
-        })),
-        subtotal: Number(tx.subtotal),
-        discountTotal: Number(tx.discountTotal),
-        total: Number(tx.total),
-        paymentMethod: paymentMethod,
-        paidAmount: paidAmount,
-        changeAmount: Number(tx.changeAmount)
+          quantity: i.qty,
+          price: Number(i.unitPrice),
+          total: Number(i.lineTotal)
+        }))
       };
       
-      const buffer = generateReceipt(printableTx, printWidth === 58 ? 32 : 48);
-      await printerService.write(buffer);
+      await printerService.printReceipt(receiptData);
     } catch (e) {
       console.error('Print failed', e);
       alert('Failed to print via Bluetooth');

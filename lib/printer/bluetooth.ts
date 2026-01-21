@@ -1,22 +1,24 @@
-import { BluetoothDevice, PrinterStatus } from './types';
-import { Capacitor } from '@capacitor/core';
+import { BluetoothDevice, PrinterStatus, ReceiptData } from './types';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
-// Declare the interface for the plugin
-// capacitor-bluetooth-serial usually exposes itself on window.BluetoothSerial or via import
-// Since it's a Cordova plugin wrapped for Capacitor, it's often on window
-declare global {
-  interface Window {
-    BluetoothSerial?: {
-      isEnabled: (success: any, failure: any) => void;
-      list: (success: any, failure: any) => void;
-      discoverUnpaired: (success: any, failure: any) => void;
-      connect: (macAddress: string, success: any, failure: any) => void;
-      disconnect: (success: any, failure: any) => void;
-      write: (data: any, success: any, failure: any) => void;
-      isConnected: (success: any, failure: any) => void;
+// Define the custom plugin interface
+interface BluetoothPrinterPlugin {
+  scan(): Promise<{ devices: { name: string; address: string; id: string }[] }>;
+  print(options: { macAddress: string; data: ReceiptData }): Promise<{
+    status: 'SUCCESS' | 'FAILED' | 'BUSY';
+    message: string;
+    printerConnected: boolean;
+    canRetry: boolean;
+    telemetry?: {
+      connectTime: number;
+      printTime: number;
+      bytes: number;
     };
-  }
+  }>;
 }
+
+// Register the plugin
+const BluetoothPrinter = registerPlugin<BluetoothPrinterPlugin>('BluetoothPrinter');
 
 class BluetoothPrinterService {
   private static instance: BluetoothPrinterService;
@@ -32,50 +34,28 @@ class BluetoothPrinterService {
   }
 
   // Check if Bluetooth is enabled
+  // The native plugin checks this internally during scan/print, but we can expose a check if needed.
+  // For now, we'll assume true or let the specific actions fail.
   async isEnabled(): Promise<boolean> {
-    if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return true;
-
-    return new Promise((resolve) => {
-      if (!window.BluetoothSerial) {
-        console.warn('BluetoothSerial plugin not loaded');
-        resolve(false);
-        return;
-      }
-      window.BluetoothSerial.isEnabled(
-        () => resolve(true),
-        () => resolve(false)
-      );
-    });
+    return true; 
   }
 
   // Scan for devices
   async scan(): Promise<BluetoothDevice[]> {
     console.log('Scanning for bluetooth devices...');
     
-    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
-      return new Promise((resolve, reject) => {
-        if (!window.BluetoothSerial) {
-          reject(new Error('Bluetooth plugin missing'));
-          return;
-        }
-
-        // List paired devices first
-        window.BluetoothSerial.list(
-          (paired: any[]) => {
-            // Also scan for unpaired? It takes longer. 
-            // For now let's return paired devices as they are most stable for POS.
-            // If needed, we can chain discoverUnpaired()
-            const devices = paired.map(d => ({
-              name: d.name,
-              address: d.address,
-              id: d.address,
-              class: d.class
-            }));
-            resolve(devices);
-          },
-          (err: any) => reject(err)
-        );
-      });
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await BluetoothPrinter.scan();
+        return result.devices.map(d => ({
+          name: d.name,
+          address: d.address,
+          id: d.id || d.address
+        }));
+      } catch (e) {
+        console.error('Scan failed:', e);
+        throw e;
+      }
     }
     
     // Mock data for browser
@@ -85,84 +65,66 @@ class BluetoothPrinterService {
     ]), 1000));
   }
 
-  // Connect to a device
+  // Connect to a device (Logically select it)
   async connect(address: string): Promise<boolean> {
-    console.log(`Connecting to ${address}...`);
+    console.log(`Selecting printer ${address}...`);
     
-    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
-      return new Promise((resolve, reject) => {
-        if (!window.BluetoothSerial) return reject('Plugin missing');
-        
-        window.BluetoothSerial.connect(
-          address,
-          () => {
-            this.connectedDevice = { name: 'Printer', address, id: address };
-            resolve(true);
-          },
-          (err: any) => reject(err)
-        );
-      });
-    }
-
-    // Mock
-    return new Promise(resolve => setTimeout(() => {
-        this.connectedDevice = { name: 'Mock Printer', address, id: address };
-        resolve(true);
-    }, 1500));
+    // In our new stateless architecture, "connecting" just means selecting the target MAC address.
+    // The actual connection happens during print.
+    // We can verify if the device exists in paired list if we want, but simple selection is fine.
+    
+    this.connectedDevice = { name: 'Printer', address, id: address };
+    
+    // If native, we could verify it exists or is bonded, but for now we trust the MAC.
+    return true;
   }
 
-  // Disconnect
+  // Disconnect (Logically deselect)
   async disconnect(): Promise<boolean> {
-    if (Capacitor.isNativePlatform() && window.BluetoothSerial) {
-      return new Promise(resolve => {
-        window.BluetoothSerial!.disconnect(
-          () => {
-            this.connectedDevice = null;
-            resolve(true);
-          }, 
-          () => resolve(false)
-        );
-      });
-    }
-    
     this.connectedDevice = null;
     return true;
   }
 
-  // Write data
-  async write(data: number[]): Promise<boolean> {
+  // Print Receipt (New Method)
+  async printReceipt(data: ReceiptData): Promise<{ success: boolean; message: string }> {
     if (!this.connectedDevice) {
-        throw new Error('No printer connected');
+      throw new Error('No printer selected');
     }
-    
+
     if (Capacitor.isNativePlatform()) {
-      return new Promise((resolve, reject) => {
-        if (!window.BluetoothSerial) return reject('Plugin missing');
+      try {
+        const result = await BluetoothPrinter.print({
+          macAddress: this.connectedDevice.address,
+          data: data
+        });
         
-        // BluetoothSerial expects array or string.
-        window.BluetoothSerial.write(
-          data,
-          () => resolve(true),
-          (err: any) => reject(err)
-        );
-      });
+        if (result.status === 'SUCCESS' || result.status === 'BUSY') {
+             // BUSY means "already printed" (idempotency), so we treat it as success for the UI
+             return { success: true, message: result.message };
+        } else {
+             throw new Error(result.message);
+        }
+      } catch (e: any) {
+        console.error('Native print failed:', e);
+        throw new Error(e.message || 'Failed to print');
+      }
+    } else {
+      // Browser Mock
+      console.log('Printing Receipt (Mock):', data);
+      return new Promise(resolve => setTimeout(() => resolve({ success: true, message: 'Printed (Mock)' }), 1000));
     }
-    
-    console.log('Writing bytes to printer:', data.length, 'bytes');
-    return true;
+  }
+
+  // Deprecated: Write raw bytes (Kept for compatibility if any other code uses it, but implementation changed)
+  async write(data: number[]): Promise<boolean> {
+    console.warn('write() is deprecated. Use printReceipt() instead.');
+    // We cannot support raw byte writing with the new high-level plugin.
+    // Throw error to force migration.
+    throw new Error('Raw byte writing is not supported. Use printReceipt() with structured data.');
   }
 
   // Check connection status
   async isConnected(): Promise<boolean> {
-    if (Capacitor.isNativePlatform()) {
-      return new Promise(resolve => {
-        if (!window.BluetoothSerial) return resolve(false);
-        window.BluetoothSerial.isConnected(
-          () => resolve(true),
-          () => resolve(false)
-        );
-      });
-    }
     return !!this.connectedDevice;
   }
 

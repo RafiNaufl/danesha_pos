@@ -39,3 +39,23 @@ export interface PrintableTransaction {
   paidAmount: number;
   changeAmount: number;
 }
+
+export interface ReceiptItem {
+  name: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface ReceiptData {
+  storeName: string;
+  storeAddress: string;
+  transactionId: string;
+  date: string;
+  cashierName: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  footerMessage: string;
+  items: ReceiptItem[];
+}
