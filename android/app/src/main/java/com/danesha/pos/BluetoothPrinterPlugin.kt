@@ -189,9 +189,19 @@ class BluetoothPrinterPlugin : Plugin() {
         val transactionId = json.optString("transactionId", "")
         val date = json.optString("date", "")
         val cashierName = json.optString("cashierName", "")
+        
+        val memberName = json.optString("memberName", "Guest")
+        val memberStatus = json.optString("memberStatus", "")
+
         val subtotal = json.optDouble("subtotal", 0.0)
+        val discountTotal = json.optDouble("discountTotal", 0.0)
         val tax = json.optDouble("tax", 0.0)
         val total = json.optDouble("total", 0.0)
+        
+        val paymentMethod = json.optString("paymentMethod", "")
+        val paidAmount = json.optDouble("paidAmount", 0.0)
+        val changeAmount = json.optDouble("changeAmount", 0.0)
+        
         val footerMessage = json.optString("footerMessage", "")
         
         val itemsJson = json.optJSONArray("items") ?: org.json.JSONArray()
@@ -204,14 +214,21 @@ class BluetoothPrinterPlugin : Plugin() {
                     name = itemJson.optString("name", "Item"),
                     quantity = itemJson.optInt("quantity", 1),
                     price = itemJson.optDouble("price", 0.0),
-                    total = itemJson.optDouble("total", 0.0)
+                    total = itemJson.optDouble("total", 0.0),
+                    discountType = itemJson.optString("discountType", null),
+                    discountPercent = itemJson.optDouble("discountPercent", 0.0),
+                    discountAmount = itemJson.optDouble("discountAmount", 0.0)
                 )
             )
         }
 
         return ReceiptData(
             storeName, storeAddress, transactionId, date, cashierName,
-            items, subtotal, tax, total, footerMessage
+            memberName, memberStatus,
+            items, 
+            subtotal, discountTotal, tax, total,
+            paymentMethod, paidAmount, changeAmount,
+            footerMessage
         )
     }
 }

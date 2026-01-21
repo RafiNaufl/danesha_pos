@@ -45,6 +45,9 @@ export interface ReceiptItem {
   quantity: number;
   price: number;
   total: number;
+  discountType?: 'PERCENT' | 'NOMINAL' | null;
+  discountPercent?: number;
+  discountAmount?: number;
 }
 
 export interface ReceiptData {
@@ -53,9 +56,23 @@ export interface ReceiptData {
   transactionId: string;
   date: string;
   cashierName: string;
+  
+  // Member Info
+  memberName?: string;
+  memberStatus?: string; // e.g., "Gold", "Silver", or "Non-Member"
+
+  items: ReceiptItem[];
+  
+  // Totals
   subtotal: number;
+  discountTotal: number;
   tax: number;
   total: number;
+  
+  // Payment
+  paymentMethod?: string;
+  paidAmount?: number;
+  changeAmount?: number;
+  
   footerMessage: string;
-  items: ReceiptItem[];
 }

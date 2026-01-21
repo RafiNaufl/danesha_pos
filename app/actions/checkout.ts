@@ -373,6 +373,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             changeAmount: Number(dupe.changeAmount),
             createdAt: dupe.createdAt,
             categoryCode: dupe.category.code,
+            categoryName: dupe.category.name,
             memberCode: dupe.member?.memberCode,
             memberName: dupe.member?.name,
             paymentMethod: dupe.paymentMethod,
@@ -453,6 +454,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       changeAmount: changeAmount.toNumber(),
       createdAt: t.createdAt,
       categoryCode: category.code,
+      categoryName: category.name,
       memberCode: member?.memberCode,
       memberName: member?.name,
       items: (t.items as any[]).map((i: any) => ({

@@ -80,17 +80,40 @@ export function CheckoutDialog() {
         transactionId: tx.number,
         date: new Date(tx.createdAt).toLocaleString('id-ID'),
         cashierName: session?.user?.name || 'Staff',
+        
+        memberName: tx.memberName || 'Guest',
+        memberStatus: tx.categoryName || tx.categoryCode || 'General',
+
         subtotal: Number(tx.subtotal),
+        discountTotal: Number(tx.discountTotal),
         tax: 0, // Tax handling if any
         total: Number(tx.total),
+        
+        paymentMethod: paymentMethod === 'TRANSFER' ? `TRANSFER - ${selectedBank}` : paymentMethod,
+        paidAmount: paidAmount,
+        changeAmount: Number(tx.changeAmount),
+
         footerMessage: 'Terima kasih atas kunjungan Anda',
         items: (tx.items || []).map((i: any) => ({
           name: i.name,
           quantity: i.qty,
           price: Number(i.unitPrice),
-          total: Number(i.lineTotal)
+          total: Number(i.lineTotal),
+          discountType: i.discountType,
+          discountPercent: i.discountType === 'PERCENT' ? Number(i.discountValue) : 0,
+          discountAmount: Number(i.lineDiscount)
         }))
       };
+
+      // Validation: Integrity Check
+      const calculatedTotal = receiptData.subtotal - receiptData.discountTotal + receiptData.tax;
+      const tolerance = 1.0; // Floating point tolerance
+      if (Math.abs(calculatedTotal - receiptData.total) > tolerance) {
+         console.warn(`Receipt Integrity Warning: Calc ${calculatedTotal} != Total ${receiptData.total}`);
+         // We still print, but log warning. Or should we alert?
+         // User asked for validation. Let's force it to match or alert?
+         // Better to trust the server's TOTAL as source of truth, but maybe warn dev.
+      }
       
       await printerService.printReceipt(receiptData);
     } catch (e) {

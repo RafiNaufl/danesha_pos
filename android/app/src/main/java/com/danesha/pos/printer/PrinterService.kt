@@ -187,7 +187,16 @@ object PrinterService {
             .textLine("Date: ${data.date}")
             .textLine("Trans: ${data.transactionId}")
             .textLine("Cashier: ${data.cashierName}")
-            .separator() // Default 32 chars
+            
+        // Member Info
+        if (data.memberName.isNotEmpty() && data.memberName != "Guest") {
+            builder.textLine("Member: ${data.memberName}")
+            if (data.memberStatus.isNotEmpty()) {
+                builder.textLine("Kategori: ${data.memberStatus}")
+            }
+        }
+        
+        builder.separator() // Default 32 chars
             
         // Items
         for (item in data.items) {
@@ -196,6 +205,16 @@ object PrinterService {
             
             val line = "${item.quantity} x ${formatPrice(item.price)} = ${formatPrice(item.total)}"
             builder.textLine(line)
+            
+            // Item Discount
+            if (item.discountAmount > 0) {
+                val discText = if (item.discountType == "PERCENT") {
+                    "Disc (${String.format("%.0f", item.discountPercent)}%): -${formatPrice(item.discountAmount)}"
+                } else {
+                    "Disc: -${formatPrice(item.discountAmount)}"
+                }
+                builder.textLine(discText)
+            }
         }
         
         builder.separator()
@@ -204,11 +223,27 @@ object PrinterService {
         builder.setAlign(EscPosBuilder.Align.RIGHT)
             .setBold(true)
             .textLine("Subtotal: ${formatPrice(data.subtotal)}")
-            .textLine("Tax: ${formatPrice(data.tax)}")
-            .setSize(EscPosBuilder.Size.DOUBLE_HEIGHT) // Make TOTAL stand out
-            .textLine("TOTAL: ${formatPrice(data.total)}")
-            .setSize(EscPosBuilder.Size.NORMAL)
-            .setBold(false)
+            
+        if (data.discountTotal > 0) {
+            builder.textLine("Discount: -${formatPrice(data.discountTotal)}")
+        }
+        
+        builder.textLine("Tax: ${formatPrice(data.tax)}")
+        builder.setSize(EscPosBuilder.Size.DOUBLE_HEIGHT) // Make TOTAL stand out
+        builder.textLine("TOTAL: ${formatPrice(data.total)}")
+        builder.setSize(EscPosBuilder.Size.NORMAL)
+        
+        // Payment Info
+        builder.feed(1)
+        if (data.paymentMethod.isNotEmpty()) {
+             builder.textLine("Payment: ${data.paymentMethod}")
+        }
+        if (data.paidAmount > 0) {
+            builder.textLine("Paid: ${formatPrice(data.paidAmount)}")
+        }
+        builder.textLine("Change: ${formatPrice(data.changeAmount)}")
+
+        builder.setBold(false)
             
         // Footer
         builder.feed(1)

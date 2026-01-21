@@ -10,10 +10,23 @@ data class ReceiptData(
     val transactionId: String,
     val date: String,
     val cashierName: String,
+    
+    // Member Info
+    val memberName: String,
+    val memberStatus: String,
+
     val items: List<ReceiptItem>,
+    
     val subtotal: Double,
+    val discountTotal: Double,
     val tax: Double,
     val total: Double,
+    
+    // Payment
+    val paymentMethod: String,
+    val paidAmount: Double,
+    val changeAmount: Double,
+    
     val footerMessage: String
 )
 
@@ -21,5 +34,8 @@ data class ReceiptItem(
     val name: String,
     val quantity: Int,
     val price: Double,
-    val total: Double
+    val total: Double,
+    val discountType: String?, // PERCENT, NOMINAL, or null
+    val discountPercent: Double,
+    val discountAmount: Double
 )
