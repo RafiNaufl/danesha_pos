@@ -38,5 +38,6 @@ data class ReceiptItem(
     val total: Double,
     val discountType: String?, // PERCENT, NOMINAL, or null
     val discountPercent: Double,
-    val discountAmount: Double
+    val discountAmount: Double,
+    val discountReason: String? = null
 )

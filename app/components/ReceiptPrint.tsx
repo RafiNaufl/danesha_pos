@@ -6,7 +6,9 @@ type ReceiptItem = {
   name: string
   qty: number
   unitPrice: string
+  lineSubtotal?: string
   discountLabel?: string
+  lineDiscount?: string
   finalLine: string
   therapistName?: string
 }
@@ -14,7 +16,7 @@ type ReceiptItem = {
 type Props = {
   width: 58 | 80
   store: { name: string; address?: string | null; phone?: string | null; footerMessage?: string | null }
-  tx: { number: string; createdAt: Date; categoryCode: string; memberCode?: string | null; memberName?: string | null; paymentMethod?: string }
+  tx: { number: string; createdAt: Date; categoryCode: string; categoryName?: string; memberCode?: string | null; memberName?: string | null; paymentMethod?: string }
   items: ReceiptItem[]
   totals: { subtotal: string; discount: string; total: string }
   autoPrint?: boolean
@@ -55,7 +57,7 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
         <div className={`grid grid-cols-2 gap-1 ${smallSize}`}>
           <div>No: {tx.number}</div>
           <div className="text-right">{new Date(tx.createdAt).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</div>
-          <div>Kat: {tx.categoryCode}</div>
+          <div>Kat: {tx.categoryName || tx.categoryCode}</div>
           {tx.paymentMethod && <div>Metode: {tx.paymentMethod}</div>}
           {tx.memberCode && <div className="col-span-2">{tx.memberCode} {tx.memberName ? `- ${tx.memberName}` : ''}</div>}
         </div>
@@ -70,12 +72,19 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
               </div>
               <div className={`flex justify-between ${smallSize}`}>
                  <span>{it.qty} x {it.unitPrice}</span>
-                 <span>{it.finalLine}</span>
+                 <span>{it.lineSubtotal || it.finalLine}</span>
               </div>
               {it.discountLabel && (
-                <div className={`flex justify-between ${smallSize} italic`}>
-                   <span>(Disc: {it.discountLabel})</span>
-                </div>
+                <>
+                  <div className={`flex justify-between ${smallSize} italic`}>
+                     <span>{it.discountLabel}</span>
+                     <span>-{it.lineDiscount}</span>
+                  </div>
+                  <div className={`flex justify-between ${smallSize} font-bold`}>
+                     <span>Total</span>
+                     <span>{it.finalLine}</span>
+                  </div>
+                </>
               )}
               {it.therapistName && <div className={`${smallSize} text-gray-600`}>Th: {it.therapistName}</div>}
             </div>
@@ -87,9 +96,9 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
         <div className={`space-y-1 ${smallSize}`}>
           <div className="flex justify-between"><span>Subtotal</span><span>{totals.subtotal}</span></div>
           {totals.discount !== 'Rp 0' && (
-             <div className="flex justify-between"><span>Diskon</span><span>{totals.discount}</span></div>
+             <div className="flex justify-between"><span>Diskon Total</span><span>{totals.discount}</span></div>
           )}
-          <div className={`flex justify-between font-bold ${headerSize} mt-1`}><span>Total</span><span>{totals.total}</span></div>
+          <div className={`flex justify-between font-bold ${headerSize} mt-1`}><span>Total Akhir</span><span>{totals.total}</span></div>
         </div>
 
         <div className={`mt-4 text-center ${smallSize}`}>
@@ -100,4 +109,3 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
     </div>
   )
 }
-

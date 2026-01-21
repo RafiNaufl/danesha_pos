@@ -93,8 +93,8 @@ export function CheckoutDialog() {
         date: new Date(tx.createdAt).toLocaleString('id-ID'),
         cashierName: session?.user?.name || 'Staff',
         
-        memberName: tx.memberName || 'Guest',
-        memberStatus: tx.categoryName || tx.categoryCode || 'General',
+        memberName: tx.member?.name || tx.memberName || 'Guest',
+        memberStatus: tx.category?.name || tx.categoryName || tx.category?.code || tx.categoryCode || 'General',
 
         subtotal: Number(tx.subtotal),
         discountTotal: Number(tx.discountTotal),
@@ -107,7 +107,7 @@ export function CheckoutDialog() {
 
         footerMessage: storeSettings.footerMessage || 'Terima kasih atas kunjungan Anda',
         items: (tx.items || []).map((i: any) => ({
-          name: i.name,
+          name: i.product?.name || i.treatment?.name || i.name,
           quantity: i.qty,
           price: Number(i.unitPrice),
           total: Number(i.lineTotal),
@@ -217,17 +217,20 @@ export function CheckoutDialog() {
                tx={{
                  number: successTx.number,
                  createdAt: new Date(successTx.createdAt),
-                 categoryCode: successTx.categoryCode,
-                 memberCode: successTx.memberCode,
-                 memberName: successTx.memberName
+                 categoryCode: successTx.category?.code || successTx.categoryCode,
+                 categoryName: successTx.category?.name || successTx.categoryName,
+                 memberCode: successTx.member?.memberCode || successTx.memberCode,
+                 memberName: successTx.member?.name || successTx.memberName
                }}
                items={(successTx.items || []).map((i: any) => ({
-                 name: i.name,
+                 name: i.product?.name || i.treatment?.name || i.name,
                  qty: i.qty,
                  unitPrice: formatMoney(Number(i.unitPrice)),
+                 lineSubtotal: formatMoney(Number(i.lineSubtotal || (i.unitPrice * i.qty))),
                  finalLine: formatMoney(Number(i.lineTotal)),
-                 discountLabel: i.discountType ? (i.discountType === 'PERCENT' ? `${Number(i.discountValue)}%` : `${formatMoney(Number(i.discountValue))}`) : undefined,
-                 therapistName: i.therapistName ? (i.assistantName ? `${i.therapistName} & ${i.assistantName}` : i.therapistName) : undefined
+                 discountLabel: i.discountReason || (i.discountType ? (i.discountType === 'PERCENT' ? `${Number(i.discountValue)}%` : `${formatMoney(Number(i.discountValue))}`) : undefined),
+                 lineDiscount: formatMoney(Number(i.lineDiscount)),
+                 therapistName: i.therapist?.name || i.therapistName ? (i.assistant?.name || i.assistantName ? `${i.therapist?.name || i.therapistName} & ${i.assistant?.name || i.assistantName}` : (i.therapist?.name || i.therapistName)) : undefined
                }))}
                totals={{
                  subtotal: formatMoney(Number(successTx.subtotal)),

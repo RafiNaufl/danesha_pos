@@ -197,6 +197,7 @@ model TransactionItem {
   unitPrice      Decimal  @db.Decimal(12,2)
   discountType   DiscountType?
   discountValue  Decimal  @default(0) @db.Decimal(12,2)
+  discountReason String?
   lineSubtotal   Decimal  @db.Decimal(14,2)
   lineDiscount   Decimal  @db.Decimal(14,2)
   lineTotal      Decimal  @db.Decimal(14,2)

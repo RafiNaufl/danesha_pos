@@ -213,7 +213,9 @@ object PrinterService {
             
             // Item Discount
             if (item.discountAmount > 0) {
-                val discText = if (item.discountType == "PERCENT") {
+                val discText = if (item.discountReason != null) {
+                    "${item.discountReason}: -${formatPrice(item.discountAmount)}"
+                } else if (item.discountType == "PERCENT") {
                     "Disc (${String.format("%.0f", item.discountPercent)}%): -${formatPrice(item.discountAmount)}"
                 } else {
                     "Disc: -${formatPrice(item.discountAmount)}"

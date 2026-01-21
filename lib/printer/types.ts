@@ -48,6 +48,7 @@ export interface ReceiptItem {
   discountType?: 'PERCENT' | 'NOMINAL' | null;
   discountPercent?: number;
   discountAmount?: number;
+  discountReason?: string | null;
 }
 
 export interface ReceiptData {

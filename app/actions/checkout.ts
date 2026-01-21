@@ -156,6 +156,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       }
     }
 
+    // Pre-fetch 'PASIEN' category for price comparison (Member Savings Display)
+    const pasienCat = await tx.customerCategory.findUnique({ where: { code: 'PASIEN' } })
+
     for (const it of input.items) {
       // Guard: Quantity must be positive
       if (it.qty <= 0) throw new Error('Quantity must be positive')
@@ -164,13 +167,60 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       if (it.type === 'TREATMENT' && !it.treatmentId) throw new Error('Treatment required')
 
       if (it.type === 'PRODUCT') {
-        const product = await tx.product.findUnique({ where: { id: it.productId! } })
+        const product = await tx.product.findUnique({ 
+          where: { id: it.productId! },
+          include: { discount: true }
+        })
         if (!product) throw new Error('Product not found')
         // GUARD: Product inactive → tidak bisa dijual
         if (!product.active) throw new Error(`Produk ${product.name} sudah tidak aktif`)
-        const unitPrice = await getProductUnitPrice(product.id, category.id, tx)
-        const discountType = it.discountType ?? null
-        const discountValue = new Prisma.Decimal(it.discountValue ?? 0)
+        
+        let unitPrice = await getProductUnitPrice(product.id, category.id, tx)
+        let discountType = it.discountType ?? null
+        let discountValue = new Prisma.Decimal(it.discountValue ?? 0)
+        let discountReason: string | null = null
+
+        // 1. Backoffice Discount (if no manual discount)
+        if (!discountType && product.discount && product.discount.isActive) {
+           const now = new Date()
+           if (now >= product.discount.startDate && now <= product.discount.endDate) {
+              discountType = product.discount.type
+              discountValue = product.discount.value
+              if (discountType === 'PERCENT') {
+                  discountReason = `${product.discount.name} (${discountValue}%)`
+              } else {
+                  discountReason = product.discount.name
+              }
+           }
+        }
+
+        // 2. AUTO-CALC MEMBER SAVINGS DISPLAY
+        // If no discount applied yet (Manual or Backoffice), check for Member Savings
+        if (!discountType && category.code !== 'PASIEN' && pasienCat) {
+           try {
+              const pasienPrice = await getProductUnitPrice(product.id, pasienCat.id, tx)
+              // If Pasien Price (Normal) > Member Price (Current), show as discount
+              if (pasienPrice.gt(unitPrice)) {
+                 const diff = pasienPrice.sub(unitPrice)
+                 // Swap base price to Normal Price
+                 unitPrice = pasienPrice
+                 // Apply difference as discount
+                 discountType = 'NOMINAL'
+                 discountValue = diff
+                 discountReason = `Hemat ${category.name || category.code}`
+              }
+           } catch (e) {
+              // Ignore if Pasien price not found (e.g. exclusive product)
+           }
+        } else if (discountType && !discountReason) {
+            // Manual discount applied (populate reason if not already set by Backoffice)
+            if (discountType === 'PERCENT') {
+                discountReason = `Disc ${discountValue}%`
+            } else {
+                discountReason = 'Potongan Harga'
+            }
+        }
+
         if (discountValue.lessThan(0)) throw new Error('Invalid discount: negative')
         const { subtotal: ls, lineDiscount: ld, lineTotal: lt, costTotal: lc, profit: lp } = calcLineTotals(unitPrice, it.qty, discountType, discountValue, product.costPrice)
         if (ld.greaterThanOrEqualTo(ls)) throw new Error('Invalid discount: exceeds or equals item price')
@@ -188,6 +238,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             unitPrice,
             discountType,
             discountValue,
+            discountReason,
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -198,7 +249,10 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         // CLARITY: Treatment tidak menggunakan kategori untuk harga.
         // Category is stored for audit only; treatment pricing ignores category
         // categoryId tetap disimpan di Transaction untuk konsistensi audit, namun tidak mempengaruhi harga treatment.
-        const treatment = await tx.treatment.findUnique({ where: { id: it.treatmentId! } })
+        const treatment = await tx.treatment.findUnique({ 
+          where: { id: it.treatmentId! },
+          include: { discount: true }
+        })
         if (!treatment) throw new Error('Treatment not found')
         // GUARD: Treatment inactive
         if (!treatment.active) throw new Error(`Treatment ${treatment.name} sudah tidak aktif`)
@@ -221,8 +275,32 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         }
 
         const unitPrice = await getTreatmentPrice(treatment.id, tx)
-        const discountType = it.discountType ?? null
-        const discountValue = new Prisma.Decimal(it.discountValue ?? 0)
+        let discountType = it.discountType ?? null
+        let discountValue = new Prisma.Decimal(it.discountValue ?? 0)
+        let discountReason: string | null = null
+
+        // 1. Backoffice Discount (if no manual discount)
+        if (!discountType && treatment.discount && treatment.discount.isActive) {
+           const now = new Date()
+           if (now >= treatment.discount.startDate && now <= treatment.discount.endDate) {
+              discountType = treatment.discount.type
+              discountValue = treatment.discount.value
+              if (discountType === 'PERCENT') {
+                  discountReason = `${treatment.discount.name} (${discountValue}%)`
+              } else {
+                  discountReason = treatment.discount.name
+              }
+           }
+        }
+
+        if (discountType && !discountReason) {
+            if (discountType === 'PERCENT') {
+                discountReason = `Disc ${discountValue}%`
+            } else {
+                discountReason = 'Potongan Harga'
+            }
+        }
+
         if (discountValue.lessThan(0)) throw new Error('Invalid discount: negative')
         const { subtotal: ls, lineDiscount: ld, lineTotal: lt, costTotal: lc, profit: lp } = calcLineTotals(unitPrice, it.qty, discountType, discountValue, treatment.costPrice)
         if (ld.greaterThanOrEqualTo(ls)) throw new Error('Invalid discount: exceeds or equals item price')
@@ -300,6 +378,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             unitPrice,
             discountType,
             discountValue,
+            discountReason,
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -351,7 +430,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       include: {
         items: {
           include: { product: true, treatment: true, therapist: true, assistant: true }
-        }
+        },
+        category: true,
+        member: true
       }
     })
     } catch (e: any) {

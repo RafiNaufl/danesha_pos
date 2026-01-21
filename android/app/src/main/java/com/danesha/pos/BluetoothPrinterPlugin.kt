@@ -218,7 +218,8 @@ class BluetoothPrinterPlugin : Plugin() {
                     total = itemJson.optDouble("total", 0.0),
                     discountType = itemJson.optString("discountType", null),
                     discountPercent = itemJson.optDouble("discountPercent", 0.0),
-                    discountAmount = itemJson.optDouble("discountAmount", 0.0)
+                    discountAmount = itemJson.optDouble("discountAmount", 0.0),
+                    discountReason = itemJson.optString("discountReason", null)
                 )
             )
         }
