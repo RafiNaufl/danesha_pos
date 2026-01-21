@@ -12,8 +12,13 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
 
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -24,6 +29,50 @@ class BluetoothPrinterPlugin : Plugin() {
     private val isPrinting = AtomicBoolean(false)
     private val PREFS_NAME = "BluetoothPrinterPrefs"
     private val KEY_LAST_TXN = "last_printed_txn"
+
+    @PluginMethod
+    fun scan(call: PluginCall) {
+        if (!checkBluetoothPermissions()) {
+            call.reject("Permission denied: Bluetooth access required")
+            return
+        }
+
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        if (adapter == null) {
+            call.reject("Bluetooth not supported")
+            return
+        }
+
+        if (!adapter.isEnabled) {
+            call.reject("Bluetooth is disabled")
+            return
+        }
+
+        // Return bonded (paired) devices
+        // Scanning for new devices is slow and complex, usually users pair in Settings first.
+        val bondedDevices = adapter.bondedDevices
+        val devices = JSArray()
+        
+        for (device in bondedDevices) {
+            val deviceObj = JSObject()
+            deviceObj.put("name", device.name ?: "Unknown")
+            deviceObj.put("address", device.address)
+            deviceObj.put("id", device.address)
+            devices.put(deviceObj)
+        }
+        
+        val ret = JSObject()
+        ret.put("devices", devices)
+        call.resolve(ret)
+    }
+
+    private fun checkBluetoothPermissions(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
+                   ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+        }
+        return ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED
+    }
 
     @PluginMethod
     fun print(call: PluginCall) {
