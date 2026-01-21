@@ -8,12 +8,14 @@ import ReceiptPrint from '@/app/components/ReceiptPrint'
 import { printerService } from '@/lib/printer/bluetooth'
 import { useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { useSession } from 'next-auth/react'
 
 function formatMoney(amount: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount)
 }
 
 export function CheckoutDialog() {
+  const { data: session } = useSession()
   const { state, dispatch, totals } = usePos()
   const [paymentMethod, setPaymentMethod] = useState('')
   const [selectedBank, setSelectedBank] = useState('')
@@ -77,7 +79,7 @@ export function CheckoutDialog() {
         storeAddress: 'Jl. Contoh No. 123', // TODO: Get from settings
         transactionId: tx.number,
         date: new Date(tx.createdAt).toLocaleString('id-ID'),
-        cashierName: 'Staff', // TODO: Get from session
+        cashierName: session?.user?.name || 'Staff',
         subtotal: Number(tx.subtotal),
         tax: 0, // Tax handling if any
         total: Number(tx.total),
