@@ -89,9 +89,9 @@ export function PrinterConnect() {
         <Button variant={connectedDevice ? "outline" : "destructive"} size="sm" className="gap-2">
           <Printer size={16} />
           {connectedDevice ? (
-            <span className="hidden sm:inline">{connectedDevice.name}</span>
+            <span>{connectedDevice.name}</span>
           ) : (
-            <span className="hidden sm:inline">No Printer</span>
+            <span>Cek Printer</span>
           )}
           {connectedDevice && <div className="w-2 h-2 rounded-full bg-green-500" />}
         </Button>
