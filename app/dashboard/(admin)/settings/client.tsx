@@ -35,6 +35,7 @@ export function SettingsClient({ initialSettings, initialLevels }: Props) {
      storeName: initialSettings.storeName,
      storeAddress: initialSettings.storeAddress || '',
      storePhone: initialSettings.storePhone || '',
+     footerMessage: initialSettings.footerMessage || '',
      commissionDefaultPercent: initialSettings.commissionDefaultPercent.toString()
   })
   const [loading, setLoading] = useState(false)
@@ -69,6 +70,7 @@ export function SettingsClient({ initialSettings, initialLevels }: Props) {
           storeName: formData.storeName,
           storeAddress: formData.storeAddress,
           storePhone: formData.storePhone,
+          footerMessage: formData.footerMessage,
           commissionDefaultPercent: Number(formData.commissionDefaultPercent)
        })
        alert('Pengaturan berhasil disimpan')
@@ -115,6 +117,17 @@ export function SettingsClient({ initialSettings, initialLevels }: Props) {
              className="w-full p-2 border rounded-lg min-h-[48px]"
              value={formData.storePhone}
              onChange={e => setFormData({...formData, storePhone: e.target.value})}
+           />
+         </div>
+
+         <div>
+           <label className="block text-sm font-medium mb-1">Pesan Akhir Struk</label>
+           <textarea 
+             className="w-full p-2 border rounded-lg"
+             rows={2}
+             value={formData.footerMessage}
+             onChange={e => setFormData({...formData, footerMessage: e.target.value})}
+             placeholder="Terima kasih atas kunjungan Anda"
            />
          </div>
 
