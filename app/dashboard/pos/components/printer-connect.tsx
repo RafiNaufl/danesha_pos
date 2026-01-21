@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Printer, RefreshCw, Check, X, Bluetooth } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 const PREFERRED_PRINTER_KEY = 'pos_preferred_printer_mac';
 
-export function PrinterConnect() {
+export function PrinterConnect({ mobile }: { mobile?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -86,15 +87,30 @@ export function PrinterConnect() {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant={connectedDevice ? "outline" : "destructive"} size="sm" className="gap-2">
-          <Printer size={16} />
-          {connectedDevice ? (
-            <span>{connectedDevice.name}</span>
-          ) : (
-            <span>Cek Printer</span>
-          )}
-          {connectedDevice && <div className="w-2 h-2 rounded-full bg-green-500" />}
-        </Button>
+        {mobile ? (
+           <button className="w-full flex items-center gap-3 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 transition min-h-[48px]">
+             <div className={cn("p-2 rounded-full", connectedDevice ? "bg-green-100 text-green-600" : "bg-neutral-200 text-neutral-500")}>
+                <Printer size={20} />
+             </div>
+             <div className="flex flex-col items-start">
+               <span className="font-medium">Printer Connection</span>
+               <span className="text-xs text-neutral-500">
+                 {connectedDevice ? connectedDevice.name : 'Cek Printer'}
+               </span>
+             </div>
+             {connectedDevice && <Check size={16} className="ml-auto text-green-500" />}
+           </button>
+        ) : (
+          <Button variant={connectedDevice ? "outline" : "destructive"} size="sm" className="gap-2">
+            <Printer size={16} />
+            {connectedDevice ? (
+              <span>{connectedDevice.name}</span>
+            ) : (
+              <span>Cek Printer</span>
+            )}
+            {connectedDevice && <div className="w-2 h-2 rounded-full bg-green-500" />}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

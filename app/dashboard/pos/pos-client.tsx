@@ -271,6 +271,9 @@ function PosLayout({ data, session }: Props) {
                     <span className="font-medium">Backoffice Dashboard</span>
                   </Link>
                 )}
+                
+                <PrinterConnect mobile />
+
                 <button 
                   onClick={() => logout()}
                   className="w-full flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-900/10 text-red-600 hover:bg-red-100 transition min-h-[48px]"
