@@ -180,7 +180,12 @@ object PrinterService {
             .setSize(EscPosBuilder.Size.NORMAL) // Reset
             .setBold(false)
             .textLine(data.storeAddress)
-            .feed(1)
+            
+        if (data.storePhone.isNotEmpty()) {
+            builder.textLine("Tel: ${data.storePhone}")
+        }
+            
+        builder.feed(1)
             
         // Info
         builder.setAlign(EscPosBuilder.Align.LEFT)

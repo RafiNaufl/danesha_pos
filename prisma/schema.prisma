@@ -255,6 +255,7 @@ model Settings {
   storeName                String
   storeAddress             String?
   storePhone               String?
+  footerMessage            String?  @default("Terima kasih atas kunjungan Anda")
   commissionDefaultPercent Decimal  @default(10) @db.Decimal(5,2)
   updatedAt                DateTime @updatedAt
 }

@@ -186,6 +186,7 @@ class BluetoothPrinterPlugin : Plugin() {
     private fun parseReceiptData(json: JSObject): ReceiptData {
         val storeName = json.optString("storeName", "Store")
         val storeAddress = json.optString("storeAddress", "")
+        val storePhone = json.optString("storePhone", "")
         val transactionId = json.optString("transactionId", "")
         val date = json.optString("date", "")
         val cashierName = json.optString("cashierName", "")
@@ -223,7 +224,7 @@ class BluetoothPrinterPlugin : Plugin() {
         }
 
         return ReceiptData(
-            storeName, storeAddress, transactionId, date, cashierName,
+            storeName, storeAddress, storePhone, transactionId, date, cashierName,
             memberName, memberStatus,
             items, 
             subtotal, discountTotal, tax, total,

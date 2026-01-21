@@ -13,7 +13,7 @@ type ReceiptItem = {
 
 type Props = {
   width: 58 | 80
-  store: { name: string; address?: string | null; phone?: string | null }
+  store: { name: string; address?: string | null; phone?: string | null; footerMessage?: string | null }
   tx: { number: string; createdAt: Date; categoryCode: string; memberCode?: string | null; memberName?: string | null; paymentMethod?: string }
   items: ReceiptItem[]
   totals: { subtotal: string; discount: string; total: string }
@@ -93,7 +93,7 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
         </div>
 
         <div className={`mt-4 text-center ${smallSize}`}>
-          <div>Terima kasih atas kunjungan Anda</div>
+          <div>{store.footerMessage || 'Terima kasih atas kunjungan Anda'}</div>
           <div>Barang yang sudah dibeli tidak dapat ditukar/dikembalikan</div>
         </div>
       </div>

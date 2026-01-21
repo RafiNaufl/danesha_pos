@@ -53,6 +53,7 @@ export interface ReceiptItem {
 export interface ReceiptData {
   storeName: string;
   storeAddress: string;
+  storePhone?: string;
   transactionId: string;
   date: string;
   cashierName: string;

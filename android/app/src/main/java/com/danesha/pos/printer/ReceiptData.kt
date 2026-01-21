@@ -7,6 +7,7 @@ package com.danesha.pos.printer
 data class ReceiptData(
     val storeName: String,
     val storeAddress: String,
+    val storePhone: String = "",
     val transactionId: String,
     val date: String,
     val cashierName: String,

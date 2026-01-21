@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { usePos } from './pos-provider'
 import { X, Check, Printer, Loader2, Banknote, ArrowRightLeft, QrCode } from 'lucide-react'
 import { checkout } from '@/app/actions/checkout'
+import { getStoreSettings } from '@/app/actions/settings'
 import ReceiptPrint from '@/app/components/ReceiptPrint'
 import { printerService } from '@/lib/printer/bluetooth'
 import { useRef } from 'react'
@@ -23,6 +24,16 @@ export function CheckoutDialog() {
   const [loading, setLoading] = useState(false)
   const [successTx, setSuccessTx] = useState<any>(null)
   const [printWidth, setPrintWidth] = useState<58 | 80>(58)
+  const [storeSettings, setStoreSettings] = useState({
+    storeName: 'Danesha Clinic',
+    storeAddress: 'Jl. Contoh No. 123',
+    storePhone: '',
+    footerMessage: 'Terima kasih atas kunjungan Anda'
+  })
+
+  useEffect(() => {
+    getStoreSettings().then(setStoreSettings).catch(console.error)
+  }, [])
   
   // Calculate change
   const change = Math.max(0, paidAmount - totals.total)
@@ -75,8 +86,9 @@ export function CheckoutDialog() {
   const handleBluetoothPrint = async (tx: any) => {
     try {
       const receiptData = {
-        storeName: 'Danesha Clinic',
-        storeAddress: 'Jl. Contoh No. 123', // TODO: Get from settings
+        storeName: storeSettings.storeName,
+        storeAddress: storeSettings.storeAddress,
+        storePhone: storeSettings.storePhone,
         transactionId: tx.number,
         date: new Date(tx.createdAt).toLocaleString('id-ID'),
         cashierName: session?.user?.name || 'Staff',
@@ -93,7 +105,7 @@ export function CheckoutDialog() {
         paidAmount: paidAmount,
         changeAmount: Number(tx.changeAmount),
 
-        footerMessage: 'Terima kasih atas kunjungan Anda',
+        footerMessage: storeSettings.footerMessage || 'Terima kasih atas kunjungan Anda',
         items: (tx.items || []).map((i: any) => ({
           name: i.name,
           quantity: i.qty,
@@ -196,7 +208,12 @@ export function CheckoutDialog() {
           <div className="hidden print:block fixed top-0 left-0">
              <ReceiptPrint
                width={printWidth}
-               store={{ name: 'Danesha Clinic', address: 'Jl. Contoh No. 123', phone: '08123456789' }}
+               store={{ 
+                 name: storeSettings.storeName, 
+                 address: storeSettings.storeAddress, 
+                 phone: storeSettings.storePhone,
+                 footerMessage: storeSettings.footerMessage
+               }}
                tx={{
                  number: successTx.number,
                  createdAt: new Date(successTx.createdAt),
