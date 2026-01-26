@@ -91,6 +91,11 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         discountReason: i.discountReason,
         discountSource: i.discountSource, // ADDED
         isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
+        appliedDiscounts: [
+            ...(i.discountSource === 'MEMBER' ? [{ type: 'MEMBER', value: Number(i.lineDiscount) }] : []),
+            ...(i.discountSource === 'PROMO' ? [{ type: 'PROMO', value: Number(i.lineDiscount), reason: i.discountReason }] : []),
+            ...(i.discountSource === 'MANUAL' ? [{ type: 'MANUAL', value: Number(i.lineDiscount), reason: i.discountReason }] : [])
+        ],
         lineSubtotal: i.lineSubtotal,
         lineDiscount: i.lineDiscount,
         lineTotal: i.lineTotal,
@@ -249,11 +254,6 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             discountValue,
             discountReason,
             discountSource, // ADDED
-            appliedDiscounts: [
-                ...(discountSource === DiscountSource.MEMBER ? [{ type: 'MEMBER', value: ld }] : []),
-                ...(discountSource === DiscountSource.PROMO ? [{ type: 'PROMO', value: ld, reason: discountReason }] : []),
-                ...(discountSource === DiscountSource.MANUAL ? [{ type: 'MANUAL', value: ld, reason: discountReason }] : [])
-            ],
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -485,6 +485,14 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
               unitPrice: Number(i.unitPrice),
               discountType: i.discountType,
               discountValue: Number(i.discountValue),
+              discountReason: i.discountReason,
+              discountSource: i.discountSource, // ADDED
+              isMemberDiscount: i.discountSource === 'MEMBER',
+              appliedDiscounts: [
+                  ...(i.discountSource === 'MEMBER' ? [{ type: 'MEMBER', value: Number(i.lineDiscount) }] : []),
+                  ...(i.discountSource === 'PROMO' ? [{ type: 'PROMO', value: Number(i.lineDiscount), reason: i.discountReason }] : []),
+                  ...(i.discountSource === 'MANUAL' ? [{ type: 'MANUAL', value: Number(i.lineDiscount), reason: i.discountReason }] : [])
+              ],
               lineSubtotal: Number(i.lineSubtotal),
               lineDiscount: Number(i.lineDiscount),
               lineTotal: Number(i.lineTotal),
@@ -569,6 +577,11 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         discountReason: i.discountReason,
         discountSource: i.discountSource, // ADDED
         isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
+        appliedDiscounts: [
+            ...(i.discountSource === 'MEMBER' ? [{ type: 'MEMBER', value: Number(i.lineDiscount) }] : []),
+            ...(i.discountSource === 'PROMO' ? [{ type: 'PROMO', value: Number(i.lineDiscount), reason: i.discountReason }] : []),
+            ...(i.discountSource === 'MANUAL' ? [{ type: 'MANUAL', value: Number(i.lineDiscount), reason: i.discountReason }] : [])
+        ],
         lineSubtotal: Number(i.lineSubtotal),
         lineDiscount: Number(i.lineDiscount),
         lineTotal: Number(i.lineTotal),
