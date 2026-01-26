@@ -50,10 +50,10 @@ export function TransactionDetailModal({ isOpen, onClose, transactionId }: Trans
         "data-[state=open]:slide-in-from-bottom-full data-[state=closed]:slide-out-to-bottom-full", // Mobile animation
         
         // Desktop: Restore Centered Modal style
-        "sm:fixed sm:left-[50%] sm:top-[50%] sm:z-50 sm:grid sm:h-auto sm:max-h-[90vh] sm:w-full sm:max-w-2xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:gap-0 sm:rounded-lg sm:border sm:bg-background sm:shadow-lg",
+        "sm:fixed sm:left-[50%] sm:top-[50%] sm:z-50 sm:grid sm:h-auto sm:max-h-[90vh] sm:w-full sm:max-w-4xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:gap-0 sm:rounded-lg sm:border sm:bg-background sm:shadow-lg",
         "sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]" // Restore desktop animation
       )}>
-        <div className="p-4 sm:p-6 sticky top-0 bg-white z-10 border-b flex justify-between items-start rounded-t-xl">
+        <div className="p-4 sm:p-6 sticky top-0 bg-white z-10 border-b flex justify-between items-start rounded-t-xl sm:rounded-t-lg">
           <div className="flex-1">
             {/* Drag handle for mobile visual cue */}
             <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200 mb-4 sm:hidden" />
