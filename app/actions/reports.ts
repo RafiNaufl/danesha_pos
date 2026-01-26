@@ -639,18 +639,25 @@ export async function getFinancialReport(filters: ReportFilters) {
     // Note: Reusing logic from previous getSalesBreakdown but inline
     
     // 1. Product Breakdown by Category
-    // Heavy operation: fetching all product items to group by category (since category is on Transaction)
-    // Optimization: We could use raw query, but stick to Prisma for safety as requested "tanpa refactor besar"
-    const productItems = await prisma.transactionItem.findMany({
-      where: { type: 'PRODUCT', transaction: whereTxProduct },
-      select: { lineTotal: true, transaction: { select: { categoryId: true } } }
-    })
+    // Optimized: Use raw query to aggregate by category directly in DB
+    // This avoids fetching thousands of items into memory
+    const categoryBreakdown = await prisma.$queryRaw<{ categoryId: string, total: number }[]>`
+      SELECT t."categoryId", SUM(ti."lineTotal") as total
+      FROM "TransactionItem" ti
+      JOIN "Transaction" t ON ti."transactionId" = t.id
+      WHERE ti.type = 'PRODUCT'
+      AND t."createdAt" >= ${filters.from}
+      AND t."createdAt" <= ${filters.to}
+      ${filters.categoryCode ? Prisma.sql`AND t."categoryId" = ${whereTxProduct.categoryId}` : Prisma.empty}
+      ${filters.memberId ? Prisma.sql`AND t."memberId" = ${filters.memberId}` : Prisma.empty}
+      ${filters.paymentMethod ? Prisma.sql`AND t."paymentMethod" = ${filters.paymentMethod}` : Prisma.empty}
+      GROUP BY t."categoryId"
+    `
     
     const categoryTotals: Record<string, number> = {}
-    for (const it of productItems) {
-      const catId = it.transaction.categoryId
-      if (!catId) continue
-      categoryTotals[catId] = (categoryTotals[catId] || 0) + Number(it.lineTotal)
+    for (const row of categoryBreakdown) {
+      if (!row.categoryId) continue
+      categoryTotals[row.categoryId] = Number(row.total)
     }
     
     const categoryIds = Object.keys(categoryTotals)

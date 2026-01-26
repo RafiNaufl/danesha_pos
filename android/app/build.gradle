@@ -27,7 +27,7 @@ android {
     // Auto-rename APK
     applicationVariants.all { variant ->
         variant.outputs.all {
-            outputFileName = "POS-Danesha-${variant.buildType.name}-v${variant.versionName}.apk"
+            outputFileName = "POS-Danesha.apk"
         }
     }
 
