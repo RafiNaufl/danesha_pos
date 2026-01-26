@@ -91,6 +91,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         discountReason: i.discountReason,
         discountSource: i.discountSource, // ADDED
         isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
+        memberDiscount: i.discountSource === 'MEMBER' ? Number(i.lineDiscount) : 0,
+        promoDiscount: (i.discountSource === 'PROMO' || i.discountSource === 'MANUAL') ? Number(i.lineDiscount) : 0,
         appliedDiscounts: [
             ...(i.discountSource === 'MEMBER' ? [{ type: 'MEMBER', value: Number(i.lineDiscount) }] : []),
             ...(i.discountSource === 'PROMO' ? [{ type: 'PROMO', value: Number(i.lineDiscount), reason: i.discountReason }] : []),
@@ -121,6 +123,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
 
     // Prepare transaction items data first to calculate totals before creating transaction
     const txItemsData = []
+    const itemDiscounts: { member: number, promo: number }[] = [] // Store discount details for response
 
     const productQuantities: Record<string, number> = {}
     for (const it of input.items) {
@@ -185,58 +188,79 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         // GUARD: Product inactive → tidak bisa dijual
         if (!product.active) throw new Error(`Produk ${product.name} sudah tidak aktif`)
         
-        let unitPrice = await getProductUnitPrice(product.id, category.id, tx)
+        // 1. Base Prices (Member & Normal)
+        let memberPrice = await getProductUnitPrice(product.id, category.id, tx)
+        let normalPrice = memberPrice // Default same
+        
+        if (category.code !== 'PASIEN' && pasienCat) {
+           try {
+              const pPrice = await getProductUnitPrice(product.id, pasienCat.id, tx)
+              if (pPrice.gt(memberPrice)) {
+                 normalPrice = pPrice
+              }
+           } catch (e) {}
+        }
+
+        // 2. Member Discount (Always calculated)
+        let memberDiscountAmt = normalPrice.sub(memberPrice)
+        
+        // 3. Promo/Manual Discount (Calculated on top of Member Price)
+        let promoDiscountAmt = new Prisma.Decimal(0)
         let discountType = it.discountType ?? null
         let discountValue = new Prisma.Decimal(it.discountValue ?? 0)
         let discountReason: string | null = null
         let discountSource: DiscountSource | null = null
 
-        // 1. Backoffice Discount (if no manual discount)
+        // Backoffice Promo
         if (!discountType && product.discount && product.discount.isActive) {
            const now = new Date()
            if (now >= product.discount.startDate && now <= product.discount.endDate) {
-              discountType = product.discount.type
-              discountValue = product.discount.value
+              const promoType = product.discount.type
+              const promoVal = product.discount.value
               discountSource = DiscountSource.PROMO
-              if (discountType === 'PERCENT') {
-                  discountReason = `${product.discount.name} (${discountValue}%)`
+              
+              if (promoType === 'PERCENT') {
+                  promoDiscountAmt = memberPrice.mul(promoVal).div(100)
+                  discountReason = `${product.discount.name} (${promoVal}%)`
               } else {
+                  promoDiscountAmt = promoVal
                   discountReason = product.discount.name
               }
            }
-        }
-
-        // 2. AUTO-CALC MEMBER SAVINGS DISPLAY
-        // If no discount applied yet (Manual or Backoffice), check for Member Savings
-        if (!discountType && category.code !== 'PASIEN' && pasienCat) {
-           try {
-              const pasienPrice = await getProductUnitPrice(product.id, pasienCat.id, tx)
-              // If Pasien Price (Normal) > Member Price (Current), show as discount
-              if (pasienPrice.gt(unitPrice)) {
-                 const diff = pasienPrice.sub(unitPrice)
-                 // Swap base price to Normal Price
-                 unitPrice = pasienPrice
-                 // Apply difference as discount
-                 discountType = 'NOMINAL'
-                 discountValue = diff
-                 discountSource = DiscountSource.MEMBER
-                 discountReason = `Hemat ${category.name || category.code}`
-              }
-           } catch (e) {
-              // Ignore if Pasien price not found (e.g. exclusive product)
-           }
-        } else if (discountType && !discountReason) {
-            // Manual discount applied (populate reason if not already set by Backoffice)
+        } else if (discountType) {
+            // Manual
             discountSource = DiscountSource.MANUAL
             if (discountType === 'PERCENT') {
+                promoDiscountAmt = memberPrice.mul(discountValue).div(100)
                 discountReason = `Disc ${discountValue}%`
             } else {
+                promoDiscountAmt = discountValue
                 discountReason = 'Potongan Harga'
             }
         }
+        
+        // 4. Combine & Prepare DB Data
+        // Always use NOMINAL and Normal Price to ensure correct totals in DB
+        let finalUnitPrice = normalPrice
+        let totalDiscountVal = memberDiscountAmt.add(promoDiscountAmt)
+        let finalDiscountType = 'NOMINAL' as DiscountType
+        
+        // Determine Source Label
+        if (promoDiscountAmt.gt(0)) {
+            // Source is already set to PROMO or MANUAL
+            // Append Member Savings info to reason?
+            if (memberDiscountAmt.gt(0)) {
+                 discountReason = `${discountReason || 'Promo'} + Member`
+            }
+        } else if (memberDiscountAmt.gt(0)) {
+            discountSource = DiscountSource.MEMBER
+            discountReason = `Hemat ${category.name || category.code}`
+        }
 
-        if (discountValue.lessThan(0)) throw new Error('Invalid discount: negative')
-        const { subtotal: ls, lineDiscount: ld, lineTotal: lt, costTotal: lc, profit: lp } = calcLineTotals(unitPrice, it.qty, discountType, discountValue, product.costPrice)
+        if (totalDiscountVal.lessThan(0)) throw new Error('Invalid discount: negative')
+        
+        const { subtotal: ls, lineDiscount: ld, lineTotal: lt, costTotal: lc, profit: lp } = calcLineTotals(finalUnitPrice, it.qty, finalDiscountType, totalDiscountVal, product.costPrice)
+        
         if (ld.greaterThanOrEqualTo(ls)) throw new Error('Invalid discount: exceeds or equals item price')
         if (lt.lessThanOrEqualTo(0)) throw new Error('Invalid final price: must be greater than 0')
         subtotal = subtotal.add(ls)
@@ -244,14 +268,20 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         total = total.add(lt)
         costTotal = costTotal.add(lc)
         profitTotal = profitTotal.add(lp)
+        
+        // Store split details for return (TOTAL for line)
+        itemDiscounts.push({
+            member: memberDiscountAmt.mul(it.qty).toNumber(),
+            promo: promoDiscountAmt.mul(it.qty).toNumber()
+        })
 
         txItemsData.push({
             type: ItemType.PRODUCT,
             product: { connect: { id: product.id } },
             qty: it.qty,
-            unitPrice,
-            discountType,
-            discountValue,
+            unitPrice: finalUnitPrice,
+            discountType: finalDiscountType,
+            discountValue: totalDiscountVal,
             discountReason,
             discountSource, // ADDED
             lineSubtotal: ls,
@@ -407,6 +437,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
                 create: commissionsToCreate
             }
         })
+        
+        // Push empty for treatment
+        itemDiscounts.push({ member: 0, promo: 0 })
       }
     }
 
@@ -566,7 +599,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       memberCode: member?.memberCode,
       memberName: member?.name,
       cashierName: (t as any).cashier?.name || 'Unknown',
-      items: (t.items as any[]).map((i: any) => ({
+      items: (t.items as any[]).map((i: any, idx: number) => ({
         id: i.id,
         type: i.type,
         name: i.product?.name || i.treatment?.name || 'Unknown',
@@ -577,10 +610,11 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         discountReason: i.discountReason,
         discountSource: i.discountSource, // ADDED
         isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
+        memberDiscount: itemDiscounts[idx]?.member || 0,
+        promoDiscount: itemDiscounts[idx]?.promo || 0,
         appliedDiscounts: [
-            ...(i.discountSource === 'MEMBER' ? [{ type: 'MEMBER', value: Number(i.lineDiscount) }] : []),
-            ...(i.discountSource === 'PROMO' ? [{ type: 'PROMO', value: Number(i.lineDiscount), reason: i.discountReason }] : []),
-            ...(i.discountSource === 'MANUAL' ? [{ type: 'MANUAL', value: Number(i.lineDiscount), reason: i.discountReason }] : [])
+            ...(itemDiscounts[idx]?.member ? [{ type: 'MEMBER', value: itemDiscounts[idx]?.member }] : []),
+            ...(itemDiscounts[idx]?.promo ? [{ type: 'PROMO', value: itemDiscounts[idx]?.promo, reason: i.discountReason }] : [])
         ],
         lineSubtotal: Number(i.lineSubtotal),
         lineDiscount: Number(i.lineDiscount),
