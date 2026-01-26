@@ -270,7 +270,7 @@ export default function ReportsClient({ options }: Props) {
         therapistId: filters.therapistId !== 'all' ? filters.therapistId : undefined,
         paymentMethod: filters.paymentMethod !== 'all' ? filters.paymentMethod : undefined,
         page,
-        limit: 20
+        limit: 5
       })
       setReportData(data)
     } catch (error) {
