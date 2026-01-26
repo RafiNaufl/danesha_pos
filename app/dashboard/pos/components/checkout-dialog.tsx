@@ -266,6 +266,10 @@ export function CheckoutDialog() {
                  finalLine: formatMoney(Number(i.lineTotal)),
                  discountLabel: i.discountReason || (i.discountType ? (i.discountType === 'PERCENT' ? `${Number(i.discountValue)}%` : `${formatMoney(Number(i.discountValue))}`) : undefined),
                  lineDiscount: formatMoney(Number(i.lineDiscount)),
+                 appliedDiscounts: i.appliedDiscounts?.map((d: any) => ({
+                    label: d.label,
+                    value: formatMoney(d.value)
+                 })),
                  therapistName: i.therapist?.name || i.therapistName ? (i.assistant?.name || i.assistantName ? `${i.therapist?.name || i.therapistName} & ${i.assistant?.name || i.assistantName}` : (i.therapist?.name || i.therapistName)) : undefined
                }))}
                totals={{
