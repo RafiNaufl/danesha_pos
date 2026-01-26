@@ -182,6 +182,7 @@ model Transaction {
   stockMovements StockMovement[]
 
   @@index([createdAt])
+  @@index([status, createdAt]) // Optimized for "Paid transactions in date range"
   @@index([memberId])
   @@index([categoryId])
 }
