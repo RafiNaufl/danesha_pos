@@ -211,6 +211,22 @@ class BluetoothPrinterPlugin : Plugin() {
         
         for (i in 0 until itemsJson.length()) {
             val itemJson = itemsJson.getJSONObject(i)
+            
+            val appliedDiscounts = ArrayList<ReceiptDiscount>()
+            val discountsJson = itemJson.optJSONArray("appliedDiscounts")
+            if (discountsJson != null) {
+                for (j in 0 until discountsJson.length()) {
+                    val d = discountsJson.getJSONObject(j)
+                    appliedDiscounts.add(
+                        ReceiptDiscount(
+                            source = d.optString("source", ""),
+                            label = d.optString("label", ""),
+                            value = d.optDouble("value", 0.0)
+                        )
+                    )
+                }
+            }
+
             items.add(
                 ReceiptItem(
                     name = itemJson.optString("name", "Item"),
@@ -220,7 +236,8 @@ class BluetoothPrinterPlugin : Plugin() {
                     memberDiscount = itemJson.optDouble("memberDiscount", 0.0),
                     promoDiscount = itemJson.optDouble("promoDiscount", 0.0),
                     total = itemJson.optDouble("total", 0.0),
-                    discountReason = itemJson.optString("discountReason", null)
+                    discountReason = itemJson.optString("discountReason", null),
+                    appliedDiscounts = appliedDiscounts
                 )
             )
         }
