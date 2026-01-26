@@ -2,6 +2,7 @@ package com.danesha.pos
 
 import com.danesha.pos.printer.PrinterService
 import com.danesha.pos.printer.ReceiptData
+import com.danesha.pos.printer.ReceiptDiscount
 import com.danesha.pos.printer.ReceiptItem
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
