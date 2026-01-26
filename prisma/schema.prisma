@@ -205,6 +205,7 @@ model TransactionItem {
   discountValue  Decimal  @default(0) @db.Decimal(12,2)
   discountReason String?
   discountSource DiscountSource?
+  appliedDiscounts Json? // Array of { source, label, value }
   lineSubtotal   Decimal  @db.Decimal(14,2)
   lineDiscount   Decimal  @db.Decimal(14,2)
   lineTotal      Decimal  @db.Decimal(14,2)

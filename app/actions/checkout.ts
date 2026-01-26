@@ -89,15 +89,18 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         discountType: i.discountType,
         discountValue: i.discountValue,
         discountReason: i.discountReason,
-        discountSource: i.discountSource, // ADDED
-        isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
+        discountSource: i.discountSource, 
+        isMemberDiscount: i.discountSource === 'MEMBER',
         memberDiscount: i.discountSource === 'MEMBER' ? Number(i.lineDiscount) : 0,
         promoDiscount: (i.discountSource === 'PROMO' || i.discountSource === 'MANUAL') ? Number(i.lineDiscount) : 0,
-        appliedDiscounts: [
-            ...(i.discountSource === 'MEMBER' ? [{ type: 'MEMBER', value: Number(i.lineDiscount) }] : []),
-            ...(i.discountSource === 'PROMO' ? [{ type: 'PROMO', value: Number(i.lineDiscount), reason: i.discountReason }] : []),
-            ...(i.discountSource === 'MANUAL' ? [{ type: 'MANUAL', value: Number(i.lineDiscount), reason: i.discountReason }] : [])
-        ],
+        appliedDiscounts: (i.appliedDiscounts as any[])?.length > 0 
+          ? (i.appliedDiscounts as any[]) 
+          : [
+              // Fallback for legacy data
+              ...(i.discountSource === 'MEMBER' ? [{ source: 'MEMBER', label: 'Member Discount', value: Number(i.lineDiscount) }] : []),
+              ...(i.discountSource === 'PROMO' ? [{ source: 'PROMO', label: i.discountReason || 'Promo', value: Number(i.lineDiscount) }] : []),
+              ...(i.discountSource === 'MANUAL' ? [{ source: 'MANUAL', label: i.discountReason || 'Manual', value: Number(i.lineDiscount) }] : [])
+            ],
         lineSubtotal: i.lineSubtotal,
         lineDiscount: i.lineDiscount,
         lineTotal: i.lineTotal,
@@ -123,8 +126,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
 
     // Prepare transaction items data first to calculate totals before creating transaction
     const txItemsData = []
-    const itemDiscounts: { member: number, promo: number }[] = [] // Store discount details for response
-
+    
     const productQuantities: Record<string, number> = {}
     for (const it of input.items) {
       if (it.type === 'PRODUCT' && it.productId) {
@@ -245,7 +247,27 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         let totalDiscountVal = memberDiscountAmt.add(promoDiscountAmt)
         let finalDiscountType = 'NOMINAL' as DiscountType
         
-        // Determine Source Label
+        // Prepare Applied Discounts for Audit (Persisted to DB)
+        // Structure: { source, label, value }
+        const appliedDiscounts = []
+        if (memberDiscountAmt.gt(0)) {
+             appliedDiscounts.push({
+                source: DiscountSource.MEMBER,
+                label: `Hemat ${category.name || category.code}`,
+                value: memberDiscountAmt.mul(it.qty).toNumber()
+             })
+        }
+        if (promoDiscountAmt.gt(0)) {
+             // Use the source determined earlier (PROMO or MANUAL)
+             const src = discountSource || DiscountSource.PROMO 
+             appliedDiscounts.push({
+                source: src,
+                label: discountReason || (src === DiscountSource.MANUAL ? 'Manual Disc' : 'Promo'),
+                value: promoDiscountAmt.mul(it.qty).toNumber()
+             })
+        }
+
+        // Determine Source Label for Legacy Compatibility (discountSource field)
         if (promoDiscountAmt.gt(0)) {
             // Source is already set to PROMO or MANUAL
             // Append Member Savings info to reason?
@@ -269,12 +291,6 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         costTotal = costTotal.add(lc)
         profitTotal = profitTotal.add(lp)
         
-        // Store split details for return (TOTAL for line)
-        itemDiscounts.push({
-            member: memberDiscountAmt.mul(it.qty).toNumber(),
-            promo: promoDiscountAmt.mul(it.qty).toNumber()
-        })
-
         txItemsData.push({
             type: ItemType.PRODUCT,
             product: { connect: { id: product.id } },
@@ -283,7 +299,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             discountType: finalDiscountType,
             discountValue: totalDiscountVal,
             discountReason,
-            discountSource, // ADDED
+            discountSource, 
+            appliedDiscounts, // AUDIT: Persist detailed discounts
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -350,6 +367,19 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         }
 
         if (discountValue.lessThan(0)) throw new Error('Invalid discount: negative')
+        
+        // Prepare Applied Discounts for Audit (Persisted to DB)
+        const appliedDiscounts = []
+        if (discountValue.gt(0)) {
+             // Use the source determined earlier (PROMO or MANUAL)
+             const src = discountSource || DiscountSource.MANUAL 
+             appliedDiscounts.push({
+                source: src,
+                label: discountReason || (src === DiscountSource.MANUAL ? 'Manual Disc' : 'Promo'),
+                value: discountValue.mul(it.qty).toNumber()
+             })
+        }
+
         const { subtotal: ls, lineDiscount: ld, lineTotal: lt, costTotal: lc, profit: lp } = calcLineTotals(unitPrice, it.qty, discountType, discountValue, treatment.costPrice)
         if (ld.greaterThanOrEqualTo(ls)) throw new Error('Invalid discount: exceeds or equals item price')
         if (lt.lessThanOrEqualTo(0)) throw new Error('Invalid final price: must be greater than 0')
@@ -427,7 +457,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             discountType,
             discountValue,
             discountReason,
-            discountSource, // ADDED
+            discountSource, 
+            appliedDiscounts, // AUDIT: Persist detailed discounts
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -438,8 +469,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             }
         })
         
-        // Push empty for treatment
-        itemDiscounts.push({ member: 0, promo: 0 })
+        // itemDiscounts logic removed
       }
     }
 
@@ -484,7 +514,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
           include: { product: true, treatment: true, therapist: true, assistant: true }
         },
         category: true,
-        member: true
+        member: true,
+        cashier: true
       }
     })
     } catch (e: any) {
@@ -599,29 +630,33 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       memberCode: member?.memberCode,
       memberName: member?.name,
       cashierName: (t as any).cashier?.name || 'Unknown',
-      items: (t.items as any[]).map((i: any, idx: number) => ({
-        id: i.id,
-        type: i.type,
-        name: i.product?.name || i.treatment?.name || 'Unknown',
-        qty: i.qty,
-        unitPrice: Number(i.unitPrice),
-        discountType: i.discountType,
-        discountValue: Number(i.discountValue),
-        discountReason: i.discountReason,
-        discountSource: i.discountSource, // ADDED
-        isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
-        memberDiscount: itemDiscounts[idx]?.member || 0,
-        promoDiscount: itemDiscounts[idx]?.promo || 0,
-        appliedDiscounts: [
-            ...(itemDiscounts[idx]?.member ? [{ type: 'MEMBER', value: itemDiscounts[idx]?.member }] : []),
-            ...(itemDiscounts[idx]?.promo ? [{ type: 'PROMO', value: itemDiscounts[idx]?.promo, reason: i.discountReason }] : [])
-        ],
-        lineSubtotal: Number(i.lineSubtotal),
-        lineDiscount: Number(i.lineDiscount),
-        lineTotal: Number(i.lineTotal),
-        therapistName: i.therapist?.name || null,
-        assistantName: i.assistant?.name || null
-      })),
+      items: (t.items as any[]).map((i: any, idx: number) => {
+        const appDiscounts = (i.appliedDiscounts as any[]) || []
+        const memberDisc = appDiscounts.find((d: any) => d.source === 'MEMBER')?.value || 0
+        const promoDisc = appDiscounts.filter((d: any) => d.source === 'PROMO' || d.source === 'MANUAL')
+                                      .reduce((acc: number, d: any) => acc + d.value, 0)
+        
+        return {
+            id: i.id,
+            type: i.type,
+            name: i.product?.name || i.treatment?.name || 'Unknown',
+            qty: i.qty,
+            unitPrice: Number(i.unitPrice),
+            discountType: i.discountType,
+            discountValue: Number(i.discountValue),
+            discountReason: i.discountReason,
+            discountSource: i.discountSource, 
+            isMemberDiscount: i.discountSource === 'MEMBER', 
+            memberDiscount: memberDisc,
+            promoDiscount: promoDisc,
+            appliedDiscounts: appDiscounts,
+            lineSubtotal: Number(i.lineSubtotal),
+            lineDiscount: Number(i.lineDiscount),
+            lineTotal: Number(i.lineTotal),
+            therapistName: i.therapist?.name || null,
+            assistantName: i.assistant?.name || null
+        }
+      }),
       info: { discountAppliedToTotalQty: true, message: 'Diskon diterapkan ke TOTAL qty, bukan per item' }
     }
   }, { timeout: 20000 })

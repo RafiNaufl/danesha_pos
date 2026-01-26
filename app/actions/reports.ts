@@ -554,6 +554,7 @@ export async function getFinancialReport(filters: ReportFilters) {
 
     data = items.map(item => ({
       id: item.id,
+      transactionId: item.transactionId,
       date: item.transaction.createdAt,
       number: item.transaction.number,
       type: item.type, // 'PRODUCT' or 'TREATMENT'
@@ -863,6 +864,7 @@ export async function getFinancialReport(filters: ReportFilters) {
 
       return {
       id: tx.id,
+      transactionId: tx.id,
       date: tx.createdAt,
       number: tx.number,
       type: 'TRANSACTION',
@@ -1099,5 +1101,46 @@ export async function getProductCategoryDetails(
     top3Omzet,
     lowestMargin,
     lossIndication
+  }
+}
+
+export async function getTransactionDetails(transactionId: string) {
+  const transaction = await prisma.transaction.findUnique({
+    where: { id: transactionId },
+    include: {
+      items: {
+        include: {
+          product: true,
+          treatment: true,
+          therapist: true,
+          assistant: true,
+          commission: true
+        }
+      },
+      member: true,
+      category: true,
+      cashier: true
+    }
+  })
+
+  if (!transaction) return null
+
+  // Normalize Decimals
+  return {
+    ...transaction,
+    subtotal: normalizeDecimal(transaction.subtotal),
+    discountTotal: normalizeDecimal(transaction.discountTotal),
+    total: normalizeDecimal(transaction.total),
+    paidAmount: normalizeDecimal(transaction.paidAmount),
+    changeAmount: normalizeDecimal(transaction.changeAmount),
+    items: transaction.items.map(item => ({
+      ...item,
+      unitPrice: normalizeDecimal(item.unitPrice),
+      lineSubtotal: normalizeDecimal(item.lineSubtotal),
+      lineDiscount: normalizeDecimal(item.lineDiscount),
+      lineTotal: normalizeDecimal(item.lineTotal),
+      profit: normalizeDecimal(item.profit),
+      appliedDiscounts: (item as any).appliedDiscounts // Pass through JSON
+    }))
   }
 }

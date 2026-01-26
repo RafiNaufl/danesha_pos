@@ -40,5 +40,12 @@ data class ReceiptItem(
     val memberDiscount: Double,
     val promoDiscount: Double,
     val total: Double, // Net Total
-    val discountReason: String? = null
+    val discountReason: String? = null,
+    val appliedDiscounts: List<ReceiptDiscount> = emptyList()
+)
+
+data class ReceiptDiscount(
+    val source: String, // MEMBER, PROMO, MANUAL
+    val label: String,
+    val value: Double
 )

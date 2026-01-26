@@ -40,6 +40,7 @@ import StockReportView from './StockReportView'
 import { Capacitor } from '@capacitor/core'
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { FileOpener } from '@capacitor-community/file-opener'
+import { TransactionDetailModal } from './components/transaction-detail-modal'
 
 type Option = { id: string, name: string, memberCode?: string, code?: string }
 
@@ -241,6 +242,13 @@ export default function ReportsClient({ options }: Props) {
   const [exporting, setExporting] = useState(false)
   const [mainTab, setMainTab] = useState<'financial' | 'stock'>('financial')
   const [reportData, setReportData] = useState<any>(null)
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+
+  const handleTransactionClick = (transactionId: string) => {
+    setSelectedTransactionId(transactionId)
+    setIsDetailModalOpen(true)
+  }
 
   const fetchReport = async () => {
     if (!date?.from || !date?.to) return
@@ -1159,7 +1167,11 @@ export default function ReportsClient({ options }: Props) {
               </TableHeader>
               <TableBody>
                 {reportData.data.map((row: any) => (
-                  <TableRow key={row.id}>
+                  <TableRow 
+                    key={row.id} 
+                    className="cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleTransactionClick(row.transactionId)}
+                  >
                     <TableCell className="whitespace-nowrap">
                       {format(new Date(row.date), 'dd/MM/yyyy HH:mm')}
                     </TableCell>
@@ -1260,6 +1272,14 @@ export default function ReportsClient({ options }: Props) {
         </Card>
       )}
       </>
+      )}
+      {/* Transaction Detail Modal */}
+      {selectedTransactionId && (
+        <TransactionDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={() => setIsDetailModalOpen(false)}
+          transactionId={selectedTransactionId}
+        />
       )}
     </div>
   )

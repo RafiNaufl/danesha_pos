@@ -49,6 +49,11 @@ export interface ReceiptItem {
   promoDiscount: number;
   total: number; // Net
   discountReason?: string | null;
+  appliedDiscounts?: {
+    source: string;
+    label: string;
+    value: number;
+  }[];
 }
 
 export interface ReceiptData {

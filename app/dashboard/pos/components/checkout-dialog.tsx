@@ -125,7 +125,8 @@ export function CheckoutDialog() {
           memberDiscount: memberDiscount,
           promoDiscount: promoDiscount,
           total: Number(i.lineTotal),
-          discountReason: reason
+          discountReason: reason,
+          appliedDiscounts: i.appliedDiscounts // Pass structured discounts to printer
         };
       });
 

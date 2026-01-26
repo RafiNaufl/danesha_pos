@@ -212,18 +212,27 @@ object PrinterService {
             val line = "${item.quantity} x ${formatPrice(item.price)} = ${formatPrice(item.grossTotal)}"
             builder.textLine(line)
             
-            // Member Discount
-            if (item.memberDiscount > 0) {
-                // Calculate percent for display if possible
-                val pct = if (item.grossTotal > 0) (item.memberDiscount / item.grossTotal) * 100 else 0.0
-                val pctStr = if (pct > 0) "(${String.format("%.0f", pct)}%)" else ""
-                builder.textLine("Member Disc $pctStr: -${formatPrice(item.memberDiscount)}")
-            }
+            // Discount Logic (New vs Legacy)
+            if (item.appliedDiscounts.isNotEmpty()) {
+                for (d in item.appliedDiscounts) {
+                    if (d.value > 0) {
+                        builder.textLine("${d.label}: -${formatPrice(d.value)}")
+                    }
+                }
+            } else {
+                // Fallback: Legacy Member Discount
+                if (item.memberDiscount > 0) {
+                    // Calculate percent for display if possible
+                    val pct = if (item.grossTotal > 0) (item.memberDiscount / item.grossTotal) * 100 else 0.0
+                    val pctStr = if (pct > 0) "(${String.format("%.0f", pct)}%)" else ""
+                    builder.textLine("Member Disc $pctStr: -${formatPrice(item.memberDiscount)}")
+                }
 
-            // Promo Discount
-            if (item.promoDiscount > 0) {
-                val reason = item.discountReason ?: "Promo Disc"
-                builder.textLine("$reason: -${formatPrice(item.promoDiscount)}")
+                // Fallback: Legacy Promo Discount
+                if (item.promoDiscount > 0) {
+                    val reason = item.discountReason ?: "Promo Disc"
+                    builder.textLine("$reason: -${formatPrice(item.promoDiscount)}")
+                }
             }
         }
         
