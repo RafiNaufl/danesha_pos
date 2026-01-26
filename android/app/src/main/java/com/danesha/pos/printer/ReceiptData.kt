@@ -18,10 +18,11 @@ data class ReceiptData(
 
     val items: List<ReceiptItem>,
     
-    val subtotal: Double,
-    val discountTotal: Double,
+    val subtotal: Double, // Gross Total (Qty * Price)
+    val memberDiscountTotal: Double,
+    val promoDiscountTotal: Double,
     val tax: Double,
-    val total: Double,
+    val total: Double, // Net Total
     
     // Payment
     val paymentMethod: String,
@@ -35,9 +36,9 @@ data class ReceiptItem(
     val name: String,
     val quantity: Int,
     val price: Double,
-    val total: Double,
-    val discountType: String?, // PERCENT, NOMINAL, or null
-    val discountPercent: Double,
-    val discountAmount: Double,
+    val grossTotal: Double, // Qty * Price
+    val memberDiscount: Double,
+    val promoDiscount: Double,
+    val total: Double, // Net Total
     val discountReason: String? = null
 )

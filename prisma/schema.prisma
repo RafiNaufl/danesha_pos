@@ -23,6 +23,12 @@ enum DiscountType {
   NOMINAL
 }
 
+enum DiscountSource {
+  MEMBER
+  PROMO
+  MANUAL
+}
+
 enum StockMovementType {
   IN
   OUT
@@ -198,6 +204,7 @@ model TransactionItem {
   discountType   DiscountType?
   discountValue  Decimal  @default(0) @db.Decimal(12,2)
   discountReason String?
+  discountSource DiscountSource?
   lineSubtotal   Decimal  @db.Decimal(14,2)
   lineDiscount   Decimal  @db.Decimal(14,2)
   lineTotal      Decimal  @db.Decimal(14,2)

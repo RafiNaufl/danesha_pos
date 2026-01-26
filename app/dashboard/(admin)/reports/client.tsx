@@ -37,6 +37,9 @@ import { getFinancialReport, getProductCategoryDetails, ReportFilters, CategoryI
 import { saveAs } from 'file-saver'
 import ExcelJS from 'exceljs'
 import StockReportView from './StockReportView'
+import { Capacitor } from '@capacitor/core'
+import { Filesystem, Directory } from '@capacitor/filesystem'
+import { FileOpener } from '@capacitor-community/file-opener'
 
 type Option = { id: string, name: string, memberCode?: string, code?: string }
 
@@ -444,11 +447,80 @@ export default function ReportsClient({ options }: Props) {
 
       // 3. Generate File
       const buffer = await workbook.xlsx.writeBuffer()
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const fileName = `Laporan_Keuangan_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`
-      
-      saveAs(blob, fileName)
-      alert('Laporan berhasil diekspor!')
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          // Request permissions first (mainly for Android < 10)
+          // On Android 11+, this might not be enough for direct public access, 
+          // but Capacitor handles some fallback logic.
+          try {
+             await Filesystem.requestPermissions();
+          } catch (permError) {
+             console.warn('Permission request failed or ignored', permError);
+          }
+
+          // Convert buffer to base64
+          const base64Data = typeof Buffer !== 'undefined' 
+            ? Buffer.from(buffer).toString('base64') 
+            : (() => {
+                let binary = '';
+                const bytes = new Uint8Array(buffer);
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+                }
+                return window.btoa(binary);
+              })();
+
+          // Try saving to Download folder (ExternalStorage/Download)
+          let savedFileUri;
+          try {
+            const result = await Filesystem.writeFile({
+              path: `Download/${fileName}`,
+              data: base64Data,
+              directory: Directory.ExternalStorage,
+              recursive: true
+            });
+            savedFileUri = result.uri;
+          } catch (e) {
+             console.warn('Failed to save to Download folder, trying Documents', e);
+             
+             // Fallback to Documents
+             try {
+                const result = await Filesystem.writeFile({
+                  path: fileName,
+                  data: base64Data,
+                  directory: Directory.Documents,
+                });
+                savedFileUri = result.uri;
+             } catch (e2) {
+                 // Fallback to Cache
+                 console.warn('Failed to save to Documents, falling back to Cache', e2);
+                 const result = await Filesystem.writeFile({
+                  path: fileName,
+                  data: base64Data,
+                  directory: Directory.Cache,
+                });
+                savedFileUri = result.uri;
+             }
+          }
+
+          await FileOpener.open({
+            filePath: savedFileUri,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          });
+          
+          alert('Laporan berhasil disimpan di folder Download dan dibuka!')
+        } catch (error: any) {
+          console.error('Mobile export error:', error)
+          alert(`Gagal menyimpan file: ${error.message}`)
+        }
+      } else {
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        saveAs(blob, fileName)
+        alert('Laporan berhasil diekspor!')
+      }
       
     } catch (error) {
       console.error('Export Error:', error)

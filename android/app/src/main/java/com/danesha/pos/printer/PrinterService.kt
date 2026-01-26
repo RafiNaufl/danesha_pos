@@ -208,19 +208,22 @@ object PrinterService {
             // Truncate item name to 30 chars
             builder.textTruncated(item.name, 30) 
             
-            val line = "${item.quantity} x ${formatPrice(item.price)} = ${formatPrice(item.total)}"
+            // LOGIC: Qty x Price = Gross
+            val line = "${item.quantity} x ${formatPrice(item.price)} = ${formatPrice(item.grossTotal)}"
             builder.textLine(line)
             
-            // Item Discount
-            if (item.discountAmount > 0) {
-                val discText = if (item.discountReason != null) {
-                    "${item.discountReason}: -${formatPrice(item.discountAmount)}"
-                } else if (item.discountType == "PERCENT") {
-                    "Disc (${String.format("%.0f", item.discountPercent)}%): -${formatPrice(item.discountAmount)}"
-                } else {
-                    "Disc: -${formatPrice(item.discountAmount)}"
-                }
-                builder.textLine(discText)
+            // Member Discount
+            if (item.memberDiscount > 0) {
+                // Calculate percent for display if possible
+                val pct = if (item.grossTotal > 0) (item.memberDiscount / item.grossTotal) * 100 else 0.0
+                val pctStr = if (pct > 0) "(${String.format("%.0f", pct)}%)" else ""
+                builder.textLine("Member Disc $pctStr: -${formatPrice(item.memberDiscount)}")
+            }
+
+            // Promo Discount
+            if (item.promoDiscount > 0) {
+                val reason = item.discountReason ?: "Promo Disc"
+                builder.textLine("$reason: -${formatPrice(item.promoDiscount)}")
             }
         }
         
@@ -231,8 +234,12 @@ object PrinterService {
             .setBold(true)
             .textLine("Subtotal: ${formatPrice(data.subtotal)}")
             
-        if (data.discountTotal > 0) {
-            builder.textLine("Discount: -${formatPrice(data.discountTotal)}")
+        if (data.memberDiscountTotal > 0) {
+            builder.textLine("Member Discount: -${formatPrice(data.memberDiscountTotal)}")
+        }
+
+        if (data.promoDiscountTotal > 0) {
+            builder.textLine("Promo Discount: -${formatPrice(data.promoDiscountTotal)}")
         }
         
         builder.textLine("Tax: ${formatPrice(data.tax)}")

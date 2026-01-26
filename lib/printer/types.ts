@@ -44,10 +44,10 @@ export interface ReceiptItem {
   name: string;
   quantity: number;
   price: number;
-  total: number;
-  discountType?: 'PERCENT' | 'NOMINAL' | null;
-  discountPercent?: number;
-  discountAmount?: number;
+  grossTotal: number; // Qty * Price
+  memberDiscount: number;
+  promoDiscount: number;
+  total: number; // Net
   discountReason?: string | null;
 }
 
@@ -67,7 +67,8 @@ export interface ReceiptData {
   
   // Totals
   subtotal: number;
-  discountTotal: number;
+  memberDiscountTotal: number;
+  promoDiscountTotal: number;
   tax: number;
   total: number;
   

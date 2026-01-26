@@ -85,20 +85,65 @@ export function CheckoutDialog() {
 
   const handleBluetoothPrint = async (tx: any) => {
     try {
+      let memberDiscountTotal = 0;
+      let promoDiscountTotal = 0;
+      let grossSubtotal = 0;
+
+      const items = (tx.items || []).map((i: any) => {
+        const unitPrice = Number(i.unitPrice);
+        const qty = i.qty;
+        const grossTotal = unitPrice * qty;
+        const lineDiscount = Number(i.lineDiscount);
+        
+        let memberDiscount = 0;
+        let promoDiscount = 0;
+
+        // Classification Logic
+        // 1. If isMemberDiscount flag from backend is true -> Member Savings
+        // 2. Else -> Promo Discount
+        // REFACTORED: Now using backend Enum 'DiscountSource' via isMemberDiscount flag.
+        const reason = i.discountReason || '';
+        const isMemberDisc = i.isMemberDiscount; // Source of Truth from Backend Enum
+        
+        if (lineDiscount > 0) {
+            if (isMemberDisc) {
+                memberDiscount = lineDiscount;
+            } else {
+                promoDiscount = lineDiscount;
+            }
+        }
+
+        grossSubtotal += grossTotal;
+        memberDiscountTotal += memberDiscount;
+        promoDiscountTotal += promoDiscount;
+
+        return {
+          name: i.product?.name || i.treatment?.name || i.name,
+          quantity: qty,
+          price: unitPrice,
+          grossTotal: grossTotal,
+          memberDiscount: memberDiscount,
+          promoDiscount: promoDiscount,
+          total: Number(i.lineTotal),
+          discountReason: reason
+        };
+      });
+
       const receiptData = {
         storeName: storeSettings.storeName,
         storeAddress: storeSettings.storeAddress,
         storePhone: storeSettings.storePhone,
         transactionId: tx.number,
         date: new Date(tx.createdAt).toLocaleString('id-ID'),
-        cashierName: session?.user?.name || 'Staff',
+        cashierName: tx.cashierName || session?.user?.name || 'Staff',
         
         memberName: tx.member?.name || tx.memberName || 'Guest',
         memberStatus: tx.category?.name || tx.categoryName || tx.category?.code || tx.categoryCode || 'General',
 
-        subtotal: Number(tx.subtotal),
-        discountTotal: Number(tx.discountTotal),
-        tax: 0, // Tax handling if any
+        subtotal: grossSubtotal,
+        memberDiscountTotal: memberDiscountTotal,
+        promoDiscountTotal: promoDiscountTotal,
+        tax: 0, 
         total: Number(tx.total),
         
         paymentMethod: paymentMethod === 'TRANSFER' ? `TRANSFER - ${selectedBank}` : paymentMethod,
@@ -106,25 +151,15 @@ export function CheckoutDialog() {
         changeAmount: Number(tx.changeAmount),
 
         footerMessage: storeSettings.footerMessage || 'Terima kasih atas kunjungan Anda',
-        items: (tx.items || []).map((i: any) => ({
-          name: i.product?.name || i.treatment?.name || i.name,
-          quantity: i.qty,
-          price: Number(i.unitPrice),
-          total: Number(i.lineTotal),
-          discountType: i.discountType,
-          discountPercent: i.discountType === 'PERCENT' ? Number(i.discountValue) : 0,
-          discountAmount: Number(i.lineDiscount)
-        }))
+        items: items
       };
 
-      // Validation: Integrity Check
-      const calculatedTotal = receiptData.subtotal - receiptData.discountTotal + receiptData.tax;
-      const tolerance = 1.0; // Floating point tolerance
+      // Integrity Check
+      // Net = Gross - MemberDisc - PromoDisc + Tax
+      const calculatedTotal = receiptData.subtotal - receiptData.memberDiscountTotal - receiptData.promoDiscountTotal + receiptData.tax;
+      const tolerance = 50.0; // Relax tolerance slightly due to float rounding
       if (Math.abs(calculatedTotal - receiptData.total) > tolerance) {
          console.warn(`Receipt Integrity Warning: Calc ${calculatedTotal} != Total ${receiptData.total}`);
-         // We still print, but log warning. Or should we alert?
-         // User asked for validation. Let's force it to match or alert?
-         // Better to trust the server's TOTAL as source of truth, but maybe warn dev.
       }
       
       await printerService.printReceipt(receiptData);

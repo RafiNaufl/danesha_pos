@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from '@/app/lib/prisma'
-import { Prisma, DiscountType, ItemType } from '@prisma/client'
+import { Prisma, DiscountType, ItemType, DiscountSource } from '@prisma/client'
 import { getCategoryByCode, getDefaultCommissionPercent, getProductUnitPrice, getTreatmentPrice } from '@/app/actions/pricing'
 import { calcLineTotals } from '@/app/lib/calculations'
 import { revalidatePath } from 'next/cache'
@@ -60,7 +60,8 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
     include: {
       items: { include: { product: true, treatment: true, therapist: true } },
       member: true,
-      category: true
+      category: true,
+      cashier: true
     }
   }) as any
   if (existing) {
@@ -78,6 +79,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       categoryCode: existing.category.code,
       memberCode: existing.member?.memberCode,
       memberName: existing.member?.name,
+      cashierName: existing.cashier?.name || 'Unknown',
       items: existing.items.map((i: any) => ({
         id: i.id,
         type: i.type,
@@ -86,6 +88,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         unitPrice: i.unitPrice,
         discountType: i.discountType,
         discountValue: i.discountValue,
+        discountReason: i.discountReason,
+        discountSource: i.discountSource, // ADDED
+        isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
         lineSubtotal: i.lineSubtotal,
         lineDiscount: i.lineDiscount,
         lineTotal: i.lineTotal,
@@ -179,6 +184,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         let discountType = it.discountType ?? null
         let discountValue = new Prisma.Decimal(it.discountValue ?? 0)
         let discountReason: string | null = null
+        let discountSource: DiscountSource | null = null
 
         // 1. Backoffice Discount (if no manual discount)
         if (!discountType && product.discount && product.discount.isActive) {
@@ -186,6 +192,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
            if (now >= product.discount.startDate && now <= product.discount.endDate) {
               discountType = product.discount.type
               discountValue = product.discount.value
+              discountSource = DiscountSource.PROMO
               if (discountType === 'PERCENT') {
                   discountReason = `${product.discount.name} (${discountValue}%)`
               } else {
@@ -207,6 +214,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
                  // Apply difference as discount
                  discountType = 'NOMINAL'
                  discountValue = diff
+                 discountSource = DiscountSource.MEMBER
                  discountReason = `Hemat ${category.name || category.code}`
               }
            } catch (e) {
@@ -214,6 +222,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
            }
         } else if (discountType && !discountReason) {
             // Manual discount applied (populate reason if not already set by Backoffice)
+            discountSource = DiscountSource.MANUAL
             if (discountType === 'PERCENT') {
                 discountReason = `Disc ${discountValue}%`
             } else {
@@ -239,6 +248,12 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             discountType,
             discountValue,
             discountReason,
+            discountSource, // ADDED
+            appliedDiscounts: [
+                ...(discountSource === DiscountSource.MEMBER ? [{ type: 'MEMBER', value: ld }] : []),
+                ...(discountSource === DiscountSource.PROMO ? [{ type: 'PROMO', value: ld, reason: discountReason }] : []),
+                ...(discountSource === DiscountSource.MANUAL ? [{ type: 'MANUAL', value: ld, reason: discountReason }] : [])
+            ],
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -278,6 +293,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         let discountType = it.discountType ?? null
         let discountValue = new Prisma.Decimal(it.discountValue ?? 0)
         let discountReason: string | null = null
+        let discountSource: DiscountSource | null = null
 
         // 1. Backoffice Discount (if no manual discount)
         if (!discountType && treatment.discount && treatment.discount.isActive) {
@@ -285,6 +301,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
            if (now >= treatment.discount.startDate && now <= treatment.discount.endDate) {
               discountType = treatment.discount.type
               discountValue = treatment.discount.value
+              discountSource = DiscountSource.PROMO
               if (discountType === 'PERCENT') {
                   discountReason = `${treatment.discount.name} (${discountValue}%)`
               } else {
@@ -294,6 +311,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         }
 
         if (discountType && !discountReason) {
+            discountSource = DiscountSource.MANUAL
             if (discountType === 'PERCENT') {
                 discountReason = `Disc ${discountValue}%`
             } else {
@@ -379,6 +397,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             discountType,
             discountValue,
             discountReason,
+            discountSource, // ADDED
             lineSubtotal: ls,
             lineDiscount: ld,
             lineTotal: lt,
@@ -538,6 +557,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       categoryName: category.name,
       memberCode: member?.memberCode,
       memberName: member?.name,
+      cashierName: (t as any).cashier?.name || 'Unknown',
       items: (t.items as any[]).map((i: any) => ({
         id: i.id,
         type: i.type,
@@ -546,6 +566,9 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         unitPrice: Number(i.unitPrice),
         discountType: i.discountType,
         discountValue: Number(i.discountValue),
+        discountReason: i.discountReason,
+        discountSource: i.discountSource, // ADDED
+        isMemberDiscount: i.discountSource === 'MEMBER', // Use DB Enum if available
         lineSubtotal: Number(i.lineSubtotal),
         lineDiscount: Number(i.lineDiscount),
         lineTotal: Number(i.lineTotal),

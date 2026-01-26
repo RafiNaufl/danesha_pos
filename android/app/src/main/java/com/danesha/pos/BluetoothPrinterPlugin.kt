@@ -195,7 +195,8 @@ class BluetoothPrinterPlugin : Plugin() {
         val memberStatus = json.optString("memberStatus", "")
 
         val subtotal = json.optDouble("subtotal", 0.0)
-        val discountTotal = json.optDouble("discountTotal", 0.0)
+        val memberDiscountTotal = json.optDouble("memberDiscountTotal", 0.0)
+        val promoDiscountTotal = json.optDouble("promoDiscountTotal", 0.0)
         val tax = json.optDouble("tax", 0.0)
         val total = json.optDouble("total", 0.0)
         
@@ -215,10 +216,10 @@ class BluetoothPrinterPlugin : Plugin() {
                     name = itemJson.optString("name", "Item"),
                     quantity = itemJson.optInt("quantity", 1),
                     price = itemJson.optDouble("price", 0.0),
+                    grossTotal = itemJson.optDouble("grossTotal", 0.0),
+                    memberDiscount = itemJson.optDouble("memberDiscount", 0.0),
+                    promoDiscount = itemJson.optDouble("promoDiscount", 0.0),
                     total = itemJson.optDouble("total", 0.0),
-                    discountType = itemJson.optString("discountType", null),
-                    discountPercent = itemJson.optDouble("discountPercent", 0.0),
-                    discountAmount = itemJson.optDouble("discountAmount", 0.0),
                     discountReason = itemJson.optString("discountReason", null)
                 )
             )
@@ -228,7 +229,7 @@ class BluetoothPrinterPlugin : Plugin() {
             storeName, storeAddress, storePhone, transactionId, date, cashierName,
             memberName, memberStatus,
             items, 
-            subtotal, discountTotal, tax, total,
+            subtotal, memberDiscountTotal, promoDiscountTotal, tax, total,
             paymentMethod, paidAmount, changeAmount,
             footerMessage
         )
