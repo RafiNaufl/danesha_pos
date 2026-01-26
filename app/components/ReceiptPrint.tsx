@@ -9,6 +9,7 @@ type ReceiptItem = {
   lineSubtotal?: string
   discountLabel?: string
   lineDiscount?: string
+  appliedDiscounts?: { label: string; value: string }[]
   finalLine: string
   therapistName?: string
 }
@@ -74,7 +75,21 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
                  <span>{it.qty} x {it.unitPrice}</span>
                  <span>{it.lineSubtotal || it.finalLine}</span>
               </div>
-              {it.discountLabel && (
+              
+              {it.appliedDiscounts && it.appliedDiscounts.length > 0 ? (
+                <>
+                  {it.appliedDiscounts.map((d, idx) => (
+                    <div key={idx} className={`flex justify-between ${smallSize} italic`}>
+                       <span>{d.label}</span>
+                       <span>-{d.value}</span>
+                    </div>
+                  ))}
+                  <div className={`flex justify-between ${smallSize} font-bold`}>
+                     <span>Total</span>
+                     <span>{it.finalLine}</span>
+                  </div>
+                </>
+              ) : it.discountLabel ? (
                 <>
                   <div className={`flex justify-between ${smallSize} italic`}>
                      <span>{it.discountLabel}</span>
@@ -85,7 +100,8 @@ export default function ReceiptPrint({ width, store, tx, items, totals, autoPrin
                      <span>{it.finalLine}</span>
                   </div>
                 </>
-              )}
+              ) : null}
+
               {it.therapistName && <div className={`${smallSize} text-gray-600`}>Th: {it.therapistName}</div>}
             </div>
           ))}
